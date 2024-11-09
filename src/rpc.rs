@@ -1,3 +1,4 @@
+use async_nats::Subject;
 use crate::NatsJsonMessage;
 
 #[async_trait::async_trait]
@@ -11,4 +12,15 @@ pub trait NatsRpcRequest: NatsJsonMessage {
         let deserialized_response = Self::Response::from_json_bytes(&response_bytes)?;
         Ok(deserialized_response)
     }
+}
+
+pub async fn reply<T: NatsJsonMessage>(reply_to: Option<Subject>, message: T, nats_connection: &async_nats::client::Client) -> anyhow::Result<()> {
+    let subject = if let Some(reply_to) = reply_to {
+        reply_to
+    } else {
+        return Ok(());
+    };
+    let bytes = message.to_json_bytes()?;
+    nats_connection.publish(subject, bytes.into()).await?;
+    Ok(())
 }
