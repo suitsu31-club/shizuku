@@ -13,7 +13,6 @@ pub trait NatsRpcRequest: NatsJsonMessage {
         Ok(deserialized_response)
     }
     async fn reply(
-        &self,
         reply_to: Option<Subject>,
         message: Self::Response,
         nats_connection: &async_nats::client::Client
