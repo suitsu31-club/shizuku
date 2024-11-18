@@ -4,9 +4,9 @@ pub mod rpc;
 pub mod simple_push;
 
 pub trait NatsJsonMessage
-where Self: serde::Serialize + for <'de> serde::de::Deserialize<'de> + Sized
+where Self: serde::Serialize + for <'de> serde::de::Deserialize<'de> + Sized + Send
 {
-    fn subject() -> &'static str;
+    const SUBJECT: &'static str;
     fn to_json_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
         let json = serde_json::to_string(self)?;
         Ok(json.into_bytes())
