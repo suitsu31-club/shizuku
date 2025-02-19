@@ -15,26 +15,36 @@ pub trait NatsKvValue: NatsMessage {
     fn with_key(self, key: Self::Key) -> NatsKv<Self::Key, Self> {
         NatsKv::new(key, self)
     }
+
     async fn entry(
         store: &kv::Store,
         key: Self::Key,
     ) -> anyhow::Result<Option<NatsKvEntry<Self::Key, Self>>>
-    where
-        Self: Sized,
     {
         let key = key.into();
         let entry = store.entry(key).await?;
         let entry = entry.map(NatsKvEntry::new);
         Ok(entry)
     }
+
     async fn get(store: &kv::Store, key: Self::Key) -> anyhow::Result<Option<Self>>
-    where
-        Self: Sized,
     {
         Ok(store
             .get(key.into())
             .await?
             .map(|value| Self::parse_from_bytes(&value)?))
+    }
+
+    async fn delete_by_key(store: &kv::Store, key: Self::Key) -> anyhow::Result<()>
+    {
+        store.delete(key.into()).await?;
+        Ok(())
+    }
+
+    async fn delete_expect_revision(store: &kv::Store, key: Self::Key, version: u64) -> anyhow::Result<()>
+    {
+        store.delete_expect_revision(key.into(), Some(version)).await?;
+        Ok(())
     }
 }
 
@@ -49,6 +59,12 @@ impl<K, V> NatsKv<K, V> {
         let value = self.1.to_bytes()?;
         store.put(key, value.into()).await?;
         Ok(())
+    }
+    pub async fn update(self, store: &kv::Store, reversion: u64) -> anyhow::Result<u64> {
+        let key = self.0.into();
+        let value = self.1.to_bytes()?;
+        let new = store.update(key, value.into(), reversion).await?;
+        Ok(new)
     }
 }
 
