@@ -1,13 +1,9 @@
-[package]
-name = "ame-bus"
-version = "0.3.0"
-edition = "2021"
-license = "MIT"
-repository = "https://github.com/Ame-Build/ame-bus.git"
-description = "A NATS tool for JSON messages"
+[workspace]
+resolver = "2"
+members = [ "ame_bus","ame_bus_macros"]
 
 
-[dependencies]
+[workspace.dependencies]
 # runtime
 tokio = { version = "1.0", features = ["full"] }
 async-trait = "0.1"
