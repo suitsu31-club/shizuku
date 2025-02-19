@@ -7,12 +7,15 @@ repository = "https://github.com/Ame-Build/ame-bus.git"
 description = "A NATS tool for JSON messages"
 
 [dependencies]
+tokio = { workspace = true}
 async-trait = { workspace = true }
 anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 async-nats = { workspace = true }
+num_cpus = "1.16.0"
+
 
 [features]
 jetstream = []
