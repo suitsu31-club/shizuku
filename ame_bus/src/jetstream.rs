@@ -19,10 +19,10 @@ pub trait NatsJetStreamMeta: Send + Sync {
 #[async_trait::async_trait]
 pub trait NatsJetStreamConsumer: Send + Sync + NatsJetStreamMeta {
     const CONSUMER_NAME: &'static str;
-    async fn get_or_create_consumer(
+    async fn get_or_create_consumer<T: async_nats::jetstream::consumer::IntoConsumerConfig>(
         stream: async_nats::jetstream::stream::Stream,
     ) -> anyhow::Result<
-        async_nats::jetstream::consumer::Consumer<async_nats::jetstream::consumer::pull::Config>,
+        async_nats::jetstream::consumer::Consumer<T>,
     > {
         let consumer = stream
             .get_or_create_consumer(
