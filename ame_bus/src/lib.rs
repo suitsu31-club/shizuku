@@ -6,5 +6,6 @@ pub mod message;
 #[cfg(feature = "service")]
 pub mod service_rpc;
 pub mod pool;
+mod tests;
 
 pub use message::{NatsJsonMessage, NatsMessage};

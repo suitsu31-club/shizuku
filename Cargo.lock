@@ -30,6 +30,7 @@ dependencies = [
 name = "ame-bus"
 version = "0.3.0"
 dependencies = [
+ "ame_bus_macros",
  "anyhow",
  "async-nats",
  "async-trait",
@@ -44,6 +45,7 @@ dependencies = [
 name = "ame_bus_macros"
 version = "0.1.0"
 dependencies = [
+ "proc-macro2",
  "quote",
  "syn",
 ]
