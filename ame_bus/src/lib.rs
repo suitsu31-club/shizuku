@@ -3,9 +3,9 @@ pub mod jetstream;
 #[cfg(any(feature = "jetstream", doc))]
 pub mod kv;
 pub mod message;
+pub mod pool;
 #[cfg(any(feature = "service", doc))]
 pub mod service_rpc;
-pub mod pool;
 mod tests;
 
 pub use message::{NatsJsonMessage, NatsMessage};

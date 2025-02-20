@@ -18,21 +18,9 @@ pub trait NatsJetStreamMeta: Send + Sync {
 
 #[async_trait::async_trait]
 pub trait NatsJetStreamConsumer: Send + Sync + NatsJetStreamMeta {
+    type ConsumerConfig: async_nats::jetstream::consumer::IntoConsumerConfig;
     const CONSUMER_NAME: &'static str;
-    async fn get_or_create_consumer<T: async_nats::jetstream::consumer::IntoConsumerConfig>(
+    async fn get_or_create_consumer(
         stream: async_nats::jetstream::stream::Stream,
-    ) -> anyhow::Result<
-        async_nats::jetstream::consumer::Consumer<T>,
-    > {
-        let consumer = stream
-            .get_or_create_consumer(
-                Self::CONSUMER_NAME,
-                async_nats::jetstream::consumer::pull::Config {
-                    durable_name: Some(Self::CONSUMER_NAME.to_owned()),
-                    ..Default::default()
-                },
-            )
-            .await?;
-        Ok(consumer)
-    }
+    ) -> anyhow::Result<async_nats::jetstream::consumer::Consumer<Self::ConsumerConfig>>;
 }

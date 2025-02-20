@@ -1,6 +1,7 @@
-use serde::ser::Error;
+use serde::de::Error;
 use std::sync::Arc;
 
+#[async_trait::async_trait]
 /// # NATS Message
 ///
 /// Generic trait for NATS messages.
@@ -8,8 +9,8 @@ pub trait NatsMessage
 where
     Self: Sized + Send,
 {
-    type SerError: Error;
-    type DeError: Error;
+    type SerError: std::error::Error + Send + Sync + 'static;
+    type DeError: std::error::Error + Send + Sync + 'static;
 
     /// serialize message to bytes. Can be any format.
     fn to_bytes(&self) -> Result<Arc<[u8]>, Self::SerError>;
@@ -33,7 +34,7 @@ impl<T: NatsJsonMessage> NatsMessage for T {
 
 /// # NATS JSON Message
 ///
-/// Based on `serde_json` serialization and deserialization.
+/// Based on `serde_json` serialization and deseriali + async_nats::jetstream::consumer::FromConsumerzation.
 ///
 /// implement `NatsJsonMessage` will automatically implement `NatsMessage` for the type.
 pub trait NatsJsonMessage

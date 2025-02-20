@@ -146,6 +146,8 @@ impl JetStreamMetaOptions {
         let description = description.map(|v| quote! { description: Some(#v.to_owned()), });
 
         quote! {
+
+            #[async_trait::async_trait]
             impl ame_bus::jetstream::NatsJetStreamMeta for #ident {
                 const STREAM_NAME: &'static str = #stream_name;
                 async fn get_or_create_stream(

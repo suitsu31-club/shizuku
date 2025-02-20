@@ -4,7 +4,7 @@ use std::marker::PhantomData;
 
 #[async_trait::async_trait]
 pub trait NatsKvValue: NatsMessage + Sync + Send {
-    type Key: Into<String>;
+    type Key: Into<String> + Send + Sync;
     const BUCKET: &'static str;
     fn store_config() -> kv::Config {
         kv::Config {
@@ -27,10 +27,11 @@ pub trait NatsKvValue: NatsMessage + Sync + Send {
     }
 
     async fn get(store: &kv::Store, key: Self::Key) -> anyhow::Result<Option<Self>> {
-        Ok(store
+        let value = store
             .get(key.into())
             .await?
-            .map(|value| Self::parse_from_bytes(&value)?))
+            .map(|value| Self::parse_from_bytes(&value));
+        Ok(value.transpose()?)
     }
 
     async fn delete_by_key(store: &kv::Store, key: Self::Key) -> anyhow::Result<()> {
@@ -52,30 +53,27 @@ pub trait NatsKvValue: NatsMessage + Sync + Send {
 
 pub struct NatsKv<K, V>(pub K, pub V)
 where
-    K: Into<String>,
+    K: Into<String> + Send + Sync,
     V: NatsKvValue<Key = K> + Send + Sync;
 
-impl<K, V: NatsKvValue<Key = K>> NatsKv<K, V>
+impl<K, V> NatsKv<K, V>
 where
-    K: Into<String>,
-    V: NatsKvValue<Key = K> + Send + Sync
+    K: Into<String> + Send + Sync,
+    V: NatsKvValue<Key = K> + Send + Sync,
 {
     pub fn new(key: K, value: V) -> Self {
         Self(key, value)
     }
-    pub async fn put(self, store: &kv::Store) -> anyhow::Result<()>
-    where
-        <V as NatsMessage>::SerError: Send,
-    {
+    pub async fn put(self, store: &kv::Store) -> anyhow::Result<()> {
         let key = self.0.into();
         let value = self.1.to_bytes()?;
-        store.put(key, value.as_ref().into()).await?;
+        store.put(key, value.to_vec().into()).await?;
         Ok(())
     }
     pub async fn update(self, store: &kv::Store, reversion: u64) -> anyhow::Result<u64> {
         let key = self.0.into();
         let value = self.1.to_bytes()?;
-        let new = store.update(key, value.into(), reversion).await?;
+        let new = store.update(key, value.to_vec().into(), reversion).await?;
         Ok(new)
     }
 }
@@ -85,10 +83,10 @@ pub struct NatsKvEntry<K: Into<String>, V: NatsKvValue<Key = K>> {
     value: PhantomData<V>,
 }
 
-impl<K, V: NatsKvValue<Key = K>> NatsKvEntry<K, V>
+impl<K, V> NatsKvEntry<K, V>
 where
-    K: Into<String>,
-    V: NatsKvValue<Key = K> + Send + Sync
+    K: Into<String> + Send + Sync,
+    V: NatsKvValue<Key = K> + Send + Sync,
 {
     pub fn new(entry: kv::Entry) -> Self {
         Self {
