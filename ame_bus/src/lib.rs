@@ -10,7 +10,7 @@ mod tests;
 
 pub use message::{NatsJsonMessage, NatsMessage};
 
-/// This macro is used to specify the JetStream using of the struct.
+/// Specify the JetStream using of the struct.
 /// Usually used for a consumer or message in JetStream.
 ///
 /// example:
@@ -28,3 +28,40 @@ pub use message::{NatsJsonMessage, NatsMessage};
 /// }
 /// ```
 pub use ame_bus_macros::jetstream;
+
+/// Configure the JetStream consumer.
+///
+/// Must implement [NatsJetStreamMeta](crate::jetstream::NatsJetStreamMeta) trait first.
+///
+/// example:
+/// ```rust
+/// # use ame_bus_macros::{jetstream, jetstream_consumer};
+///
+/// #[jetstream(
+///      name = "user.registered.successful",
+///      description = "User successful registered event consumer",
+/// )]
+/// #[jetstream_consumer(
+///    name = "user-successful-registered-consumer",
+///    durable
+/// )]
+/// pub struct UserSuccessfulRegisteredConsumer {
+///     database_connection: (),    // use `()` for example, should be a real connection
+/// }
+/// ```
+pub use ame_bus_macros::jetstream_consumer;
+
+/// Implement `NatsJsonMessage` trait if it has already implemented `Serialize` and `Deserialize` traits.
+///
+/// example:
+/// ```rust
+/// # use serde::{Deserialize, Serialize};
+/// # use ame_bus_macros::NatsJsonMessage;
+///
+/// #[derive(Serialize, Deserialize, NatsJsonMessage)]
+/// pub struct User {
+///    pub id: String,
+///    pub name: String,
+/// }
+/// ```
+pub use ame_bus_macros::NatsJsonMessage;

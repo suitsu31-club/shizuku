@@ -1,6 +1,13 @@
 #[async_trait::async_trait]
+/// # NATS JetStream Meta
+///
+/// Specify the JetStream using of the struct. Usually used for a consumer or message in JetStream.
+///
+/// Usually implemented by [jetstream](crate::jetstream) attribute.
 pub trait NatsJetStreamMeta: Send + Sync {
     const STREAM_NAME: &'static str;
+
+    /// Get or create the JetStream stream.
     async fn get_or_create_stream(
         &self,
         js: &async_nats::jetstream::Context,
@@ -17,9 +24,26 @@ pub trait NatsJetStreamMeta: Send + Sync {
 }
 
 #[async_trait::async_trait]
+/// # NATS JetStream Consumer Meta
+///
+/// Configure the JetStream consumer.
+///
+/// Must implement [NatsJetStreamMeta](crate::jetstream::NatsJetStreamMeta) trait first.
+///
+/// Usually implemented by [jetstream_consumer](crate::jetstream_consumer) attribute.
 pub trait NatsJetStreamConsumerMeta: Send + Sync + NatsJetStreamMeta {
+    /// Consumer configuration type.
+    ///
+    /// Usually is [jetstream::consumer::pull::Config](async_nats::jetstream::consumer::pull::Config)
+    /// or [jetstream::consumer::push::Config](async_nats::jetstream::consumer::push::Config).
     type ConsumerConfig: async_nats::jetstream::consumer::IntoConsumerConfig;
+
+    /// Consumer name.
+    ///
+    /// If the consumer is durable, it will also be the durable name.
     const CONSUMER_NAME: &'static str;
+
+    /// Get or create the JetStream consumer.
     async fn get_or_create_consumer(
         stream: async_nats::jetstream::stream::Stream,
     ) -> anyhow::Result<async_nats::jetstream::consumer::Consumer<Self::ConsumerConfig>>;

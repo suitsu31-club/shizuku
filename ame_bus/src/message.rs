@@ -34,6 +34,8 @@ impl<T: NatsJsonMessage> NatsMessage for T {
 
 /// # NATS JSON Message
 ///
+/// Implement this trait will make the struct can be serialized and deserialized to JSON bytes.
+///
 /// Based on `serde_json` serialization and deseriali + async_nats::jetstream::consumer::FromConsumerzation.
 ///
 /// implement `NatsJsonMessage` will automatically implement `NatsMessage` for the type.
