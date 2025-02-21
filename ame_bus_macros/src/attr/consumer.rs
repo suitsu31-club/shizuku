@@ -1,7 +1,9 @@
 use convert_case::Casing;
-use syn::{Expr, Lit, Meta, Token};
+use proc_macro::TokenStream;
+use quote::quote;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
+use syn::{Expr, Lit, Meta, Token};
 
 #[derive(Debug, Clone, Default)]
 /// middleware options for jetstream consumers
@@ -129,11 +131,11 @@ impl Parse for JetStreamConsumerOptions {
                         // #[jetstream_consumer(durable_name = "foo")]
                         ("durable_name", Lit::Str(lit_str)) => {
                             options.durable_name = Some(lit_str.value());
-                        },
+                        }
                         // #[jetstream_consumer(description = "foo")]
                         ("description", Lit::Str(lit_str)) => {
                             options.description = Some(lit_str.value());
-                        },
+                        }
 
                         // #[jetstream_consumer(deliver_policy = "all")]
                         ("deliver_policy", Lit::Str(lit_str)) => {
@@ -149,7 +151,7 @@ impl Parse for JetStreamConsumerOptions {
                                     ));
                                 }
                             };
-                        },  // ("deliver_policy", Lit::Str(lit_str))
+                        }  // ("deliver_policy", Lit::Str(lit_str))
 
                         // #[jetstream_consumer(ack_policy = "all")]
                         ("ack_policy", Lit::Str(lit_str)) => {
@@ -164,37 +166,37 @@ impl Parse for JetStreamConsumerOptions {
                                     ));
                                 }
                             };
-                        },  // ("ack_policy", Lit::Str(lit_str))
+                        }  // ("ack_policy", Lit::Str(lit_str))
 
                         // #[jetstream_consumer(ack_wait_secs = 1000)]
                         ("ack_wait_secs", Lit::Int(lit_int)) => {
                             options.ack_wait_secs = Some(lit_int.base10_parse()?);
-                        },
+                        }
 
                         // #[jetstream_consumer(filter_subject = "foo")]
                         ("filter_subject", Lit::Str(lit_str)) => {
                             options.filter_subject = Some(lit_str.value());
-                        },
+                        }
 
                         // #[jetstream_consumer(headers_only)]
                         ("headers_only", Lit::Bool(lit_bool)) => {
                             options.headers_only = Some(lit_bool.value);
-                        },
+                        }
 
                         // #[jetstream_consumer(max_batch = 1000)]
                         ("max_batch", Lit::Int(lit_int)) => {
                             options.pull_max_batch = Some(lit_int.base10_parse()?);
-                        },
+                        }
 
                         // #[jetstream_consumer(deliver_subject = "foo")]
                         ("deliver_subject", Lit::Str(lit_str)) => {
                             options.push_deliver_subject = Some(lit_str.value());
-                        },
+                        }
 
                         // #[jetstream_consumer(deliver_group = "foo")]
                         ("deliver_group", Lit::Str(lit_str)) => {
                             options.push_deliver_group = Some(lit_str.value());
-                        },
+                        }
 
                         // unknown attribute
                         (name, _) => {
@@ -204,7 +206,7 @@ impl Parse for JetStreamConsumerOptions {
                             ));
                         }
                     }   // match (ident_str.as_str(), value.lit)
-                },  // Meta::NameValue(name_value)
+                }  // Meta::NameValue(name_value)
 
                 // might be these attributes:
                 // - `push`
@@ -221,22 +223,22 @@ impl Parse for JetStreamConsumerOptions {
                         // #[jetstream_consumer(push)]
                         "push" => {
                             options.is_push = Some(true);
-                        },
+                        }
 
                         // #[jetstream_consumer(pull)]
                         "pull" => {
                             options.is_pull = Some(true);
-                        },
+                        }
 
                         // #[jetstream_consumer(durable)]
                         "durable" => {
                             options.is_durable = Some(true);
-                        },
+                        }
 
                         // #[jetstream_consumer(headers_only)]
                         "headers_only" => {
                             options.headers_only = Some(true);
-                        },
+                        }
 
                         // unknown attribute
                         other => {
@@ -246,7 +248,7 @@ impl Parse for JetStreamConsumerOptions {
                             ));
                         }
                     }   // match ident_str.as_str()
-                },  // Meta::Path(path)
+                }  // Meta::Path(path)
 
                 // can't be anything else
                 other => {
@@ -280,7 +282,7 @@ impl Parse for JetStreamConsumerOptions {
                     punctuated_options,
                     "can't set both `push` and `pull`",
                 ));
-            },
+            }
             (Some(true), None) => true,
             (None, Some(true)) => false,
             (None, None) => true,
@@ -302,7 +304,6 @@ impl Parse for JetStreamConsumerOptions {
                     "`deliver_subject` can't be set when `push` is not set",
                 ));
             }
-
         } else {
             // - no pull consumer only options are set when it's a push consumer
             if options.pull_max_batch.is_some() {
@@ -335,17 +336,17 @@ impl Into<ParsedJetStreamConsumerConfig> for JetStreamConsumerOptions {
                     deliver_subject: self.push_deliver_subject.unwrap(),
                     deliver_group: self.push_deliver_group,
                 }
-            },
+            }
             (None, Some(true)) => {
                 ConsumerType::Pull {
                     max_batch: self.pull_max_batch,
                 }
-            },
+            }
             (None, None) => {
                 ConsumerType::Pull {
                     max_batch: self.pull_max_batch,
                 }
-            },
+            }
             _ => unreachable!()
         };
 
@@ -367,5 +368,64 @@ impl ParsedJetStreamConsumerConfig {
             self.durable = DurableSetting::DurableWithName(struct_name.to_case(convert_case::Case::Snake));
         }
         self
+    }
+    pub fn gen_config(self) -> TokenStream {
+        let config_ident = match &self.consumer_type {
+            ConsumerType::Push { .. } => quote::format_ident!("async_nats::jetstream::consumer::push::Config"),
+            ConsumerType::Pull { .. } => quote::format_ident!("async_nats::jetstream::consumer::pull::Config"),
+        };
+        let type_spec_options = match self.consumer_type {
+            ConsumerType::Push { deliver_subject, deliver_group } => {
+                let deliver_group_token = deliver_group
+                    .map(|group| quote! { deliver_group: Some(#group.to_owned()) });
+                quote! {
+                    deliver_subject: #deliver_subject.to_owned(),
+                    #deliver_group_token,
+                }
+            }
+            ConsumerType::Pull { max_batch } => {
+                match max_batch {
+                    Some(batch) => quote! { max_batch: #batch, },
+                    None => quote! { },
+                }
+            }
+        };
+        let durable_option = match self.durable {
+            DurableSetting::Ephemeral => quote! { durable_name: None, },
+            DurableSetting::DurableWithDefaultName => unreachable!(),
+            DurableSetting::DurableWithName(name) => quote! { durable_name: Some(#name.to_owned()), },
+        };
+        let deliver_policy = match self.deliver_policy {
+            DeliverPolicy::All => quote! { deliver_policy: async_nats::jetstream::consumer::DeliverPolicy::All, },
+            DeliverPolicy::Last => quote! { deliver_policy: async_nats::jetstream::consumer::DeliverPolicy::Last, },
+            DeliverPolicy::New => quote! { deliver_policy: async_nats::jetstream::consumer::DeliverPolicy::New, },
+            DeliverPolicy::LastPerSubject => quote! { deliver_policy: async_nats::jetstream::consumer::DeliverPolicy::LastPerSubject, },
+        };
+        let ack_policy = match self.ack_policy {
+            AckPolicy::All => quote! { ack_policy: async_nats::jetstream::consumer::AckPolicy::All, },
+            AckPolicy::Explicit => quote! { ack_policy: async_nats::jetstream::consumer::AckPolicy::Explicit, },
+            AckPolicy::None => quote! { ack_policy: async_nats::jetstream::consumer::AckPolicy::None, },
+        };
+        let ack_wait_secs = match self.ack_wait_secs {
+            Some(secs) => quote! { ack_wait: std::time::Duration::from_secs(#secs), },
+            None => quote! { },
+        };
+        let filter_subject = self.filter_subject.map(|subject| quote! { filter_subject: Some(#subject.to_owned()), });
+        let headers_only = if self.headers_only {
+            quote! { headers_only: true, }
+        } else {
+            quote! { }
+        };
+        quote! {
+            #config_ident {
+                #type_spec_options
+                #durable_option
+                #deliver_policy
+                #ack_policy
+                #ack_wait_secs
+                #filter_subject
+                #headers_only
+            }
+        }.into()
     }
 }
