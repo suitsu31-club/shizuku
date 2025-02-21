@@ -12,3 +12,8 @@ pub fn derive_nats_json_message(input: TokenStream) -> TokenStream {
 pub fn jetstream(attr: TokenStream, item: TokenStream) -> TokenStream {
     attr::stream_meta::jetstream_meta(attr, item)
 }
+
+#[proc_macro_attribute]
+pub fn jetstream_consumer(attr: TokenStream, item: TokenStream) -> TokenStream {
+    attr::consumer::jetstream_consumer(attr, item)
+}

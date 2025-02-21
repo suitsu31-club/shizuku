@@ -1,15 +1,17 @@
-use convert_case::Casing;
 use proc_macro::TokenStream;
+use proc_macro2::Ident;
 use quote::quote;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
-use syn::{Expr, Lit, Meta, Token};
+use syn::{parse_macro_input, Expr, Lit, Meta, Token};
 
 #[derive(Debug, Clone, Default)]
 /// middleware options for jetstream consumers
 /// used when parsing the `#[jetstream_consumer]` attribute
 /// will be used to generate [ParsedJetStreamConsumerConfig] before generating the code.
 struct JetStreamConsumerOptions {
+    pub consumer_name: Option<String>,
+
     /// let the consumer be a push consumer.
     ///
     /// If this is set to `true`, while `is_pull` is also set to `true`,
@@ -24,7 +26,7 @@ struct JetStreamConsumerOptions {
 
     /// let the consumer be durable.
     ///
-    /// If `durable_name` is not set, will use snake_case of the struct name.
+    /// If `durable_name` is not set, will use `consumer_name`.
     ///
     /// Default is `false`.
     pub is_durable: Option<bool>,
@@ -70,6 +72,7 @@ enum AckPolicy {
 }
 
 struct ParsedJetStreamConsumerConfig {
+    pub consumer_name: String,
     pub durable: DurableSetting,
     pub consumer_type: ConsumerType,
     pub deliver_policy: DeliverPolicy,
@@ -81,8 +84,7 @@ struct ParsedJetStreamConsumerConfig {
 
 enum DurableSetting {
     Ephemeral,
-    DurableWithDefaultName,
-    DurableWithName(String),
+    Durable(String),
 }
 
 enum ConsumerType {
@@ -105,6 +107,7 @@ impl Parse for JetStreamConsumerOptions {
         for meta in &punctuated_options {
             match meta {
                 // might be these attributes:
+                // - `name` (required)
                 // - `durable_name`
                 // - `description`
                 // - `deliver_policy`
@@ -128,6 +131,11 @@ impl Parse for JetStreamConsumerOptions {
                         ));
                     };
                     match (ident_str.as_str(), value.lit) {
+                        // #[jetstream_consumer(name = "foo")]
+                        ("name", Lit::Str(lit_str)) => {
+                            options.consumer_name = Some(lit_str.value());
+                        }
+
                         // #[jetstream_consumer(durable_name = "foo")]
                         ("durable_name", Lit::Str(lit_str)) => {
                             options.durable_name = Some(lit_str.value());
@@ -261,6 +269,13 @@ impl Parse for JetStreamConsumerOptions {
         }   // for meta in &punctuated_options
 
         // validate the options
+        // - `name` must be set
+        if options.consumer_name.is_none() {
+            return Err(syn::Error::new_spanned(
+                punctuated_options,
+                "expected `name` attribute",
+            ));
+        }
         // - can't set both `push` and `pull`
         if options.is_push.is_some() && options.is_pull.is_some() {
             return Err(syn::Error::new_spanned(
@@ -320,10 +335,11 @@ impl Parse for JetStreamConsumerOptions {
 
 impl Into<ParsedJetStreamConsumerConfig> for JetStreamConsumerOptions {
     fn into(self) -> ParsedJetStreamConsumerConfig {
+        let name = self.consumer_name.unwrap();
         let durable = match (self.is_durable, self.durable_name) {
-            (Some(true), Some(name)) => DurableSetting::DurableWithName(name),
-            (Some(true), None) => DurableSetting::DurableWithDefaultName,
-            (None, Some(name)) => DurableSetting::DurableWithName(name),
+            (Some(true), Some(name)) => DurableSetting::Durable(name),
+            (Some(true), None) => DurableSetting::Durable(name.clone()),
+            (None, Some(name)) => DurableSetting::Durable(name),
             (None, None) => DurableSetting::Ephemeral,
             (Some(false), None) => DurableSetting::Ephemeral,
             (Some(false), Some(_)) => panic!("`durable_name` can't be set when `durable` is set to `false`"),
@@ -351,6 +367,7 @@ impl Into<ParsedJetStreamConsumerConfig> for JetStreamConsumerOptions {
         };
 
         ParsedJetStreamConsumerConfig {
+            consumer_name: name,
             durable,
             consumer_type,
             deliver_policy: self.deliver_policy,
@@ -363,16 +380,10 @@ impl Into<ParsedJetStreamConsumerConfig> for JetStreamConsumerOptions {
 }
 
 impl ParsedJetStreamConsumerConfig {
-    pub fn with_struct_name(mut self, struct_name: &str) -> Self {
-        if let DurableSetting::DurableWithDefaultName = self.durable {
-            self.durable = DurableSetting::DurableWithName(struct_name.to_case(convert_case::Case::Snake));
-        }
-        self
-    }
-    pub fn gen_config(self) -> TokenStream {
+    pub fn gen_config(self) -> proc_macro2::TokenStream {
         let config_ident = match &self.consumer_type {
-            ConsumerType::Push { .. } => quote::format_ident!("async_nats::jetstream::consumer::push::Config"),
-            ConsumerType::Pull { .. } => quote::format_ident!("async_nats::jetstream::consumer::pull::Config"),
+            ConsumerType::Push { .. } => quote! {async_nats::jetstream::consumer::push::Config},
+            ConsumerType::Pull { .. } => quote! {async_nats::jetstream::consumer::pull::Config},
         };
         let type_spec_options = match self.consumer_type {
             ConsumerType::Push { deliver_subject, deliver_group } => {
@@ -392,8 +403,7 @@ impl ParsedJetStreamConsumerConfig {
         };
         let durable_option = match self.durable {
             DurableSetting::Ephemeral => quote! { durable_name: None, },
-            DurableSetting::DurableWithDefaultName => unreachable!(),
-            DurableSetting::DurableWithName(name) => quote! { durable_name: Some(#name.to_owned()), },
+            DurableSetting::Durable(name) => quote! { durable_name: Some(#name.to_owned()), },
         };
         let deliver_policy = match self.deliver_policy {
             DeliverPolicy::All => quote! { deliver_policy: async_nats::jetstream::consumer::DeliverPolicy::All, },
@@ -425,7 +435,46 @@ impl ParsedJetStreamConsumerConfig {
                 #ack_wait_secs
                 #filter_subject
                 #headers_only
+                ..Default::default()
             }
         }.into()
     }
+    pub fn implement(self, ident: Ident) -> proc_macro2::TokenStream {
+        let consumer_config_ident = match &self.consumer_type {
+            ConsumerType::Push { .. } => quote! {async_nats::jetstream::consumer::push::Config},
+            ConsumerType::Pull { .. } => quote! {async_nats::jetstream::consumer::pull::Config},
+        };
+        let consumer_name = self.consumer_name.clone();
+        let config = self.gen_config();
+        quote! {
+            #[async_trait::async_trait]
+            impl ame_bus::jetstream::NatsJetStreamConsumerMeta for #ident {
+                type ConsumerConfig = #consumer_config_ident;
+                const CONSUMER_NAME: &'static str = #consumer_name;
+                async fn get_or_create_consumer(
+                    stream: async_nats::jetstream::stream::Stream,
+                ) -> anyhow::Result<async_nats::jetstream::consumer::Consumer<Self::ConsumerConfig>> {
+                    let consumer = stream
+                        .get_or_create_consumer(
+                        Self::CONSUMER_NAME,
+                        #config
+                    )
+                        .await?;
+                    Ok(consumer)
+                }
+            }
+        }.into()
+    }
+}
+
+pub fn jetstream_consumer(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let options = parse_macro_input!(attr as JetStreamConsumerOptions);
+    let input = parse_macro_input!(item as syn::ItemStruct);
+    let ident = input.ident.clone();
+    let parsed_options: ParsedJetStreamConsumerConfig = options.into();
+    let implement = parsed_options.implement(ident);
+    quote! {
+        #input
+        #implement
+    }.into()
 }

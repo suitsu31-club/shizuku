@@ -1,2 +1,2 @@
 pub(crate) mod stream_meta;
-mod consumer;
+pub(crate) mod consumer;
