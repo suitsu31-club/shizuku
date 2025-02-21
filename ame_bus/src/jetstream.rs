@@ -3,8 +3,9 @@
 ///
 /// Specify the JetStream using of the struct. Usually used for a consumer or message in JetStream.
 ///
-/// Usually implemented by [jetstream](crate::jetstream) attribute.
+/// Usually implemented by [jetstream](macro@crate::jetstream) attribute.
 pub trait NatsJetStreamMeta: Send + Sync {
+    /// A name for the Stream. Must not have spaces, tabs or period . characters
     const STREAM_NAME: &'static str;
 
     /// Get or create the JetStream stream.

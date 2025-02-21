@@ -9,7 +9,10 @@ pub trait NatsMessage
 where
     Self: Sized + Send,
 {
+    /// Error type for serialization.
     type SerError: std::error::Error + Send + Sync + 'static;
+
+    /// Error type for deserialization.
     type DeError: std::error::Error + Send + Sync + 'static;
 
     /// serialize message to bytes. Can be any format.
