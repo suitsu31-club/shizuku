@@ -29,7 +29,7 @@ pub trait NatsJetStreamMeta: Send + Sync {
 ///
 /// Configure the JetStream consumer.
 ///
-/// Must implement [NatsJetStreamMeta](crate::jetstream::NatsJetStreamMeta) trait first.
+/// Must implement [NatsJetStreamMeta](crate::stream::NatsJetStreamMeta) trait first.
 ///
 /// Usually implemented by [jetstream_consumer](crate::jetstream_consumer) attribute.
 pub trait NatsJetStreamConsumerMeta: Send + Sync + NatsJetStreamMeta {

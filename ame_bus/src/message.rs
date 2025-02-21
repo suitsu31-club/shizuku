@@ -46,10 +46,12 @@ pub trait NatsJsonMessage
 where
     Self: serde::Serialize + for<'de> serde::de::Deserialize<'de> + Sized + Send,
 {
+    #[allow(missing_docs)]
     fn to_json_bytes(&self) -> Result<Arc<[u8]>, serde_json::Error> {
         let json = serde_json::to_string(self)?;
         Ok(Arc::from(json.into_bytes()))
     }
+    #[allow(missing_docs)]
     fn from_json_bytes(bytes: impl AsRef<[u8]>) -> Result<Self, serde_json::Error> {
         let json = std::str::from_utf8(bytes.as_ref())
             .map_err(|_| serde_json::Error::custom("Failed to parse string from bytes"))?;
