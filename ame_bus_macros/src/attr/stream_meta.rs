@@ -26,7 +26,7 @@ impl Parse for JetStreamMetaOptions {
         }
         let punctuated_options = Punctuated::<Meta, Token![,]>::parse_terminated(input)?;
 
-        for meta in & punctuated_options {
+        for meta in &punctuated_options {
             match meta {
                 // might be these attributes:
                 // - `name` (required)
@@ -76,8 +76,8 @@ impl Parse for JetStreamMetaOptions {
                                 format!("unexpected attribute: `{}`", name),
                             ));
                         }
-                    }
-                }
+                    }   // match (ident_str.as_str(), value.lit)
+                }   // Meta::NameValue(name_value)
 
                 // might be these attributes:
                 // - `no_ack`
@@ -110,8 +110,8 @@ impl Parse for JetStreamMetaOptions {
                         "expected name-value pair or flag",
                     ));
                 }
-            }
-        }
+            }   // match meta
+        }   // for meta in &punctuated_options
 
         let Some(stream_name) = stream_name else {
             return Err(syn::Error::new_spanned(
