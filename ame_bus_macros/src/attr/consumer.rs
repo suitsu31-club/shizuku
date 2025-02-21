@@ -93,7 +93,7 @@ enum ConsumerType {
         deliver_group: Option<String>,
     },
     Pull {
-        max_batch: Option<i64>
+        max_batch: Option<i64>,
     },
 }
 
@@ -159,7 +159,7 @@ impl Parse for JetStreamConsumerOptions {
                                     ));
                                 }
                             };
-                        }  // ("deliver_policy", Lit::Str(lit_str))
+                        } // ("deliver_policy", Lit::Str(lit_str))
 
                         // #[jetstream_consumer(ack_policy = "all")]
                         ("ack_policy", Lit::Str(lit_str)) => {
@@ -174,7 +174,7 @@ impl Parse for JetStreamConsumerOptions {
                                     ));
                                 }
                             };
-                        }  // ("ack_policy", Lit::Str(lit_str))
+                        } // ("ack_policy", Lit::Str(lit_str))
 
                         // #[jetstream_consumer(ack_wait_secs = 1000)]
                         ("ack_wait_secs", Lit::Int(lit_int)) => {
@@ -213,8 +213,8 @@ impl Parse for JetStreamConsumerOptions {
                                 format!("unexpected attribute: `{}`", name),
                             ));
                         }
-                    }   // match (ident_str.as_str(), value.lit)
-                }  // Meta::NameValue(name_value)
+                    } // match (ident_str.as_str(), value.lit)
+                } // Meta::NameValue(name_value)
 
                 // might be these attributes:
                 // - `push`
@@ -222,10 +222,9 @@ impl Parse for JetStreamConsumerOptions {
                 // - `durable`
                 // - `headers_only`
                 Meta::Path(path) => {
-                    let ident = path.get_ident().ok_or(syn::Error::new_spanned(
-                        &path,
-                        "expected identifier",
-                    ))?;
+                    let ident = path
+                        .get_ident()
+                        .ok_or(syn::Error::new_spanned(&path, "expected identifier"))?;
                     let ident_str = ident.to_string();
                     match ident_str.as_str() {
                         // #[jetstream_consumer(push)]
@@ -255,8 +254,8 @@ impl Parse for JetStreamConsumerOptions {
                                 "expected name-value pair or flag",
                             ));
                         }
-                    }   // match ident_str.as_str()
-                }  // Meta::Path(path)
+                    } // match ident_str.as_str()
+                } // Meta::Path(path)
 
                 // can't be anything else
                 other => {
@@ -265,8 +264,8 @@ impl Parse for JetStreamConsumerOptions {
                         "expected name-value pair or flag",
                     ));
                 }
-            }   // match meta
-        }   // for meta in &punctuated_options
+            } // match meta
+        } // for meta in &punctuated_options
 
         // validate the options
         // - `name` must be set
@@ -301,7 +300,7 @@ impl Parse for JetStreamConsumerOptions {
             (Some(true), None) => true,
             (None, Some(true)) => false,
             (None, None) => true,
-            _ => unreachable!()
+            _ => unreachable!(),
         };
 
         if is_pull_consumer {
@@ -342,28 +341,24 @@ impl Into<ParsedJetStreamConsumerConfig> for JetStreamConsumerOptions {
             (None, Some(name)) => DurableSetting::Durable(name),
             (None, None) => DurableSetting::Ephemeral,
             (Some(false), None) => DurableSetting::Ephemeral,
-            (Some(false), Some(_)) => panic!("`durable_name` can't be set when `durable` is set to `false`"),
+            (Some(false), Some(_)) => {
+                panic!("`durable_name` can't be set when `durable` is set to `false`")
+            }
         };
 
         let consumer_type = match (self.is_push, self.is_pull) {
             (Some(true), Some(true)) => panic!("can't set both `push` and `pull`"),
-            (Some(true), None) => {
-                ConsumerType::Push {
-                    deliver_subject: self.push_deliver_subject.unwrap(),
-                    deliver_group: self.push_deliver_group,
-                }
-            }
-            (None, Some(true)) => {
-                ConsumerType::Pull {
-                    max_batch: self.pull_max_batch,
-                }
-            }
-            (None, None) => {
-                ConsumerType::Pull {
-                    max_batch: self.pull_max_batch,
-                }
-            }
-            _ => unreachable!()
+            (Some(true), None) => ConsumerType::Push {
+                deliver_subject: self.push_deliver_subject.unwrap(),
+                deliver_group: self.push_deliver_group,
+            },
+            (None, Some(true)) => ConsumerType::Pull {
+                max_batch: self.pull_max_batch,
+            },
+            (None, None) => ConsumerType::Pull {
+                max_batch: self.pull_max_batch,
+            },
+            _ => unreachable!(),
         };
 
         ParsedJetStreamConsumerConfig {
@@ -386,45 +381,62 @@ impl ParsedJetStreamConsumerConfig {
             ConsumerType::Pull { .. } => quote! {async_nats::jetstream::consumer::pull::Config},
         };
         let type_spec_options = match self.consumer_type {
-            ConsumerType::Push { deliver_subject, deliver_group } => {
-                let deliver_group_token = deliver_group
-                    .map(|group| quote! { deliver_group: Some(#group.to_owned()) });
+            ConsumerType::Push {
+                deliver_subject,
+                deliver_group,
+            } => {
+                let deliver_group_token =
+                    deliver_group.map(|group| quote! { deliver_group: Some(#group.to_owned()) });
                 quote! {
                     deliver_subject: #deliver_subject.to_owned(),
                     #deliver_group_token,
                 }
             }
-            ConsumerType::Pull { max_batch } => {
-                match max_batch {
-                    Some(batch) => quote! { max_batch: #batch, },
-                    None => quote! { },
-                }
-            }
+            ConsumerType::Pull { max_batch } => match max_batch {
+                Some(batch) => quote! { max_batch: #batch, },
+                None => quote! {},
+            },
         };
         let durable_option = match self.durable {
             DurableSetting::Ephemeral => quote! { durable_name: None, },
             DurableSetting::Durable(name) => quote! { durable_name: Some(#name.to_owned()), },
         };
         let deliver_policy = match self.deliver_policy {
-            DeliverPolicy::All => quote! { deliver_policy: async_nats::jetstream::consumer::DeliverPolicy::All, },
-            DeliverPolicy::Last => quote! { deliver_policy: async_nats::jetstream::consumer::DeliverPolicy::Last, },
-            DeliverPolicy::New => quote! { deliver_policy: async_nats::jetstream::consumer::DeliverPolicy::New, },
-            DeliverPolicy::LastPerSubject => quote! { deliver_policy: async_nats::jetstream::consumer::DeliverPolicy::LastPerSubject, },
+            DeliverPolicy::All => {
+                quote! { deliver_policy: async_nats::jetstream::consumer::DeliverPolicy::All, }
+            }
+            DeliverPolicy::Last => {
+                quote! { deliver_policy: async_nats::jetstream::consumer::DeliverPolicy::Last, }
+            }
+            DeliverPolicy::New => {
+                quote! { deliver_policy: async_nats::jetstream::consumer::DeliverPolicy::New, }
+            }
+            DeliverPolicy::LastPerSubject => {
+                quote! { deliver_policy: async_nats::jetstream::consumer::DeliverPolicy::LastPerSubject, }
+            }
         };
         let ack_policy = match self.ack_policy {
-            AckPolicy::All => quote! { ack_policy: async_nats::jetstream::consumer::AckPolicy::All, },
-            AckPolicy::Explicit => quote! { ack_policy: async_nats::jetstream::consumer::AckPolicy::Explicit, },
-            AckPolicy::None => quote! { ack_policy: async_nats::jetstream::consumer::AckPolicy::None, },
+            AckPolicy::All => {
+                quote! { ack_policy: async_nats::jetstream::consumer::AckPolicy::All, }
+            }
+            AckPolicy::Explicit => {
+                quote! { ack_policy: async_nats::jetstream::consumer::AckPolicy::Explicit, }
+            }
+            AckPolicy::None => {
+                quote! { ack_policy: async_nats::jetstream::consumer::AckPolicy::None, }
+            }
         };
         let ack_wait_secs = match self.ack_wait_secs {
             Some(secs) => quote! { ack_wait: std::time::Duration::from_secs(#secs), },
-            None => quote! { },
+            None => quote! {},
         };
-        let filter_subject = self.filter_subject.map(|subject| quote! { filter_subject: Some(#subject.to_owned()), });
+        let filter_subject = self
+            .filter_subject
+            .map(|subject| quote! { filter_subject: Some(#subject.to_owned()), });
         let headers_only = if self.headers_only {
             quote! { headers_only: true, }
         } else {
-            quote! { }
+            quote! {}
         };
         quote! {
             #config_ident {
@@ -437,7 +449,8 @@ impl ParsedJetStreamConsumerConfig {
                 #headers_only
                 ..Default::default()
             }
-        }.into()
+        }
+        .into()
     }
     pub fn implement(self, ident: Ident) -> proc_macro2::TokenStream {
         let consumer_config_ident = match &self.consumer_type {
@@ -476,5 +489,6 @@ pub fn jetstream_consumer(attr: TokenStream, item: TokenStream) -> TokenStream {
     quote! {
         #input
         #implement
-    }.into()
+    }
+    .into()
 }

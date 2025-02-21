@@ -1,4 +1,4 @@
-use proc_macro::{TokenStream};
+use proc_macro::TokenStream;
 use proc_macro2::Ident;
 use quote::quote;
 use syn::parse::{Parse, ParseStream};
@@ -42,32 +42,29 @@ impl Parse for JetStreamMetaOptions {
                     let ident_str = ident.to_string();
                     let value = name_value.to_owned().value;
                     let Expr::Lit(value) = value else {
-                        return Err(syn::Error::new_spanned(
-                            value,
-                            "expected literal",
-                        ));
+                        return Err(syn::Error::new_spanned(value, "expected literal"));
                     };
                     match (ident_str.as_str(), value.lit) {
                         // #[jetstream(name = "foo")]
                         ("name", Lit::Str(lit_str)) => {
                             stream_name = Some(lit_str.value());
-                        },
+                        }
                         // #[jetstream(max_bytes = 1000)]
                         ("max_bytes", Lit::Int(lit_int)) => {
                             max_bytes = Some(lit_int.base10_parse()?);
-                        },
+                        }
                         // #[jetstream(max_messages = 1000)]
                         ("max_messages", Lit::Int(lit_int)) => {
                             max_messages = Some(lit_int.base10_parse()?);
-                        },
+                        }
                         // #[jetstream(description = "foo")]
                         ("description", Lit::Str(lit_str)) => {
                             description = Some(lit_str.value());
-                        },
+                        }
                         // #[jetstream(no_ack)]
                         ("no_ack", Lit::Bool(lit_bool)) => {
                             no_ack = Some(lit_bool.value);
-                        },
+                        }
 
                         // unknown attribute
                         (name, _) => {
@@ -76,22 +73,21 @@ impl Parse for JetStreamMetaOptions {
                                 format!("unexpected attribute: `{}`", name),
                             ));
                         }
-                    }   // match (ident_str.as_str(), value.lit)
-                }   // Meta::NameValue(name_value)
+                    } // match (ident_str.as_str(), value.lit)
+                } // Meta::NameValue(name_value)
 
                 // might be these attributes:
                 // - `no_ack`
                 Meta::Path(path) => {
-                    let ident = path.get_ident().ok_or(syn::Error::new_spanned(
-                        &path,
-                        "expected identifier",
-                    ))?;
+                    let ident = path
+                        .get_ident()
+                        .ok_or(syn::Error::new_spanned(&path, "expected identifier"))?;
                     let ident_str = ident.to_string();
                     match ident_str.as_str() {
                         // #[jetstream(no_ack)]
                         "no_ack" => {
                             no_ack = Some(true);
-                        },
+                        }
 
                         // unknown attribute
                         other => {
@@ -101,7 +97,7 @@ impl Parse for JetStreamMetaOptions {
                             ));
                         }
                     }
-                },
+                }
 
                 // can't be anything else
                 other => {
@@ -110,8 +106,8 @@ impl Parse for JetStreamMetaOptions {
                         "expected name-value pair or flag",
                     ));
                 }
-            }   // match meta
-        }   // for meta in &punctuated_options
+            } // match meta
+        } // for meta in &punctuated_options
 
         let Some(stream_name) = stream_name else {
             return Err(syn::Error::new_spanned(
@@ -167,7 +163,8 @@ impl JetStreamMetaOptions {
                     Ok(stream)
                 }
             }
-        }.into()
+        }
+        .into()
     }
 }
 
@@ -180,5 +177,6 @@ pub fn jetstream_meta(attr: TokenStream, item: TokenStream) -> TokenStream {
     quote! {
         #input
         #implement
-    }.into()
+    }
+    .into()
 }

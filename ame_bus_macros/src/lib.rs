@@ -1,7 +1,7 @@
 use proc_macro::TokenStream;
 
-mod derive_trait;
 mod attr;
+mod derive_trait;
 
 #[proc_macro_derive(NatsJsonMessage)]
 pub fn derive_nats_json_message(input: TokenStream) -> TokenStream {
