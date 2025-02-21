@@ -1,3 +1,4 @@
+use convert_case::Casing;
 use syn::{Expr, Lit, Meta, Token};
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
@@ -67,7 +68,13 @@ enum AckPolicy {
 }
 
 struct ParsedJetStreamConsumerConfig {
-
+    pub durable: DurableSetting,
+    pub consumer_type: ConsumerType,
+    pub deliver_policy: DeliverPolicy,
+    pub ack_policy: AckPolicy,
+    pub ack_wait_secs: Option<i64>,
+    pub filter_subject: Option<String>,
+    pub headers_only: bool,
 }
 
 enum DurableSetting {
@@ -82,7 +89,7 @@ enum ConsumerType {
         deliver_group: Option<String>,
     },
     Pull {
-        max_batch: i64,
+        max_batch: Option<i64>
     },
 }
 
@@ -267,6 +274,98 @@ impl Parse for JetStreamConsumerOptions {
             ));
         }
 
-        todo!()
+        let is_pull_consumer = match (options.is_pull, options.is_push) {
+            (Some(true), Some(true)) => {
+                return Err(syn::Error::new_spanned(
+                    punctuated_options,
+                    "can't set both `push` and `pull`",
+                ));
+            },
+            (Some(true), None) => true,
+            (None, Some(true)) => false,
+            (None, None) => true,
+            _ => unreachable!()
+        };
+
+        if is_pull_consumer {
+            // - no push consumer only options are set when it's a pull consumer
+            if options.push_deliver_group.is_some() {
+                return Err(syn::Error::new_spanned(
+                    punctuated_options,
+                    "`deliver_group` can't be set when `push` is not set",
+                ));
+            }
+
+            if options.push_deliver_subject.is_some() {
+                return Err(syn::Error::new_spanned(
+                    punctuated_options,
+                    "`deliver_subject` can't be set when `push` is not set",
+                ));
+            }
+
+        } else {
+            // - no pull consumer only options are set when it's a push consumer
+            if options.pull_max_batch.is_some() {
+                return Err(syn::Error::new_spanned(
+                    punctuated_options,
+                    "`max_batch` can't be set when `pull` is not set",
+                ));
+            }
+        }
+
+        Ok(options)
+    }
+}
+
+impl Into<ParsedJetStreamConsumerConfig> for JetStreamConsumerOptions {
+    fn into(self) -> ParsedJetStreamConsumerConfig {
+        let durable = match (self.is_durable, self.durable_name) {
+            (Some(true), Some(name)) => DurableSetting::DurableWithName(name),
+            (Some(true), None) => DurableSetting::DurableWithDefaultName,
+            (None, Some(name)) => DurableSetting::DurableWithName(name),
+            (None, None) => DurableSetting::Ephemeral,
+            (Some(false), None) => DurableSetting::Ephemeral,
+            (Some(false), Some(_)) => panic!("`durable_name` can't be set when `durable` is set to `false`"),
+        };
+
+        let consumer_type = match (self.is_push, self.is_pull) {
+            (Some(true), Some(true)) => panic!("can't set both `push` and `pull`"),
+            (Some(true), None) => {
+                ConsumerType::Push {
+                    deliver_subject: self.push_deliver_subject.unwrap(),
+                    deliver_group: self.push_deliver_group,
+                }
+            },
+            (None, Some(true)) => {
+                ConsumerType::Pull {
+                    max_batch: self.pull_max_batch,
+                }
+            },
+            (None, None) => {
+                ConsumerType::Pull {
+                    max_batch: self.pull_max_batch,
+                }
+            },
+            _ => unreachable!()
+        };
+
+        ParsedJetStreamConsumerConfig {
+            durable,
+            consumer_type,
+            deliver_policy: self.deliver_policy,
+            ack_policy: self.ack_policy,
+            ack_wait_secs: self.ack_wait_secs,
+            filter_subject: self.filter_subject,
+            headers_only: self.headers_only.unwrap_or(false),
+        }
+    }
+}
+
+impl ParsedJetStreamConsumerConfig {
+    pub fn with_struct_name(mut self, struct_name: &str) -> Self {
+        if let DurableSetting::DurableWithDefaultName = self.durable {
+            self.durable = DurableSetting::DurableWithName(struct_name.to_case(convert_case::Case::Snake));
+        }
+        self
     }
 }

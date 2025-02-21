@@ -131,7 +131,7 @@ impl Parse for JetStreamMetaOptions {
 }
 
 impl JetStreamMetaOptions {
-    fn implement(self, ident: Ident) -> proc_macro2::TokenStream {
+    pub fn implement(self, ident: Ident) -> proc_macro2::TokenStream {
         let Self {
             stream_name,
             max_bytes,
