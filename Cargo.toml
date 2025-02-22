@@ -6,6 +6,7 @@ members = [ "ame_bus","ame_bus_macros"]
 [workspace.dependencies]
 # runtime
 tokio = { version = "1.0", features = ["full"] }
+futures = { version = "0.3.31" }
 async-trait = "0.1"
 anyhow = "1.0.89"
 tracing = "0.1"

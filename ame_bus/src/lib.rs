@@ -147,3 +147,6 @@ pub use ame_bus_macros::NatsJsonMessage;
 /// 
 /// Usually, you need to set the `queue_group` to make the service scaled properly.
 pub use ame_bus_macros::rpc_service;
+
+pub use tracing;
+pub use futures;
