@@ -41,7 +41,6 @@ pub trait NatsRpcRequest: NatsMessage + NatsRpcRequestMeta {
 /// Meta trait for the endpoint.
 ///
 /// If you don't have a good reason, you should always use macro to implement this trait.
-#[doc(hidden)]
 pub trait NatsRpcRequestMeta {
     /// Name of the endpoint.
     const ENDPOINT_NAME: &'static str;
