@@ -1,3 +1,6 @@
+use crate::NatsMessage;
+use std::sync::Arc;
+
 #[async_trait::async_trait]
 /// # NATS JetStream Meta
 ///
@@ -29,7 +32,7 @@ pub trait NatsJetStreamMeta: Send + Sync {
 ///
 /// Configure the JetStream consumer.
 ///
-/// Must implement [NatsJetStreamMeta](crate::stream::NatsJetStreamMeta) trait first.
+/// Must implement [NatsJetStreamMeta](crate::jetstream::NatsJetStreamMeta) trait first.
 ///
 /// Usually implemented by [jetstream_consumer](crate::jetstream_consumer) attribute.
 pub trait NatsJetStreamConsumerMeta: Send + Sync + NatsJetStreamMeta {
@@ -48,4 +51,47 @@ pub trait NatsJetStreamConsumerMeta: Send + Sync + NatsJetStreamMeta {
     async fn get_or_create_consumer(
         stream: async_nats::jetstream::stream::Stream,
     ) -> anyhow::Result<async_nats::jetstream::consumer::Consumer<Self::ConsumerConfig>>;
+}
+
+#[async_trait::async_trait]
+/// # Subscribed JetStream Event
+///
+/// Implement this trait to subscribe to JetStream events.
+///
+/// ## Example
+///
+/// ```rust
+/// # use ame_bus::jetstream::SubscribeJetStreamEvent;
+/// # use ame_bus_macros::{jetstream, jetstream_consumer, NatsJsonMessage};
+///
+/// #[jetstream(name = "user")]
+/// #[jetstream_consumer(durable)]
+/// struct UserSuccessfulRegisteredConsumer {
+///     database_connection: (),    // use `()` for example, should be a real connection
+/// }
+///
+/// #[derive(serde::Serialize, serde::Deserialize, NatsJsonMessage)]
+/// struct UserSuccessfulRegistered {
+///     user_id: String,
+///     email: String,
+/// }
+///
+/// #[async_trait::async_trait]
+/// impl SubscribeJetStreamEvent for UserSuccessfulRegistered {
+///     type EventConsumer = UserSuccessfulRegisteredConsumer;
+///     async fn emit(consumer: std::sync::Arc<Self::EventConsumer>, event: Self) -> anyhow::Result<()> {
+///         // process the event
+///         Ok(())
+///     }
+/// }
+/// ```
+pub trait SubscribeJetStreamEvent: NatsMessage {
+    /// The stateful consumer.
+    /// 
+    /// The consumer should have everything needed to process the event. 
+    /// Like database connection, `async_nats::jetstream::Context`, etc.
+    type EventConsumer: NatsJetStreamConsumerMeta;
+    
+    /// Emit the event.
+    async fn emit(consumer: Arc<Self::EventConsumer>, event: Self) -> anyhow::Result<()>;
 }

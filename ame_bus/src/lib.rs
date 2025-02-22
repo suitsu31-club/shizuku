@@ -1,6 +1,7 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 #![warn(missing_docs)]
 #![allow(rustdoc::missing_crate_level_docs)]
+#![doc = include_str!("../../README.md")]
 
 #[cfg(any(feature = "jetstream", doc))]
 #[cfg_attr(docsrs, doc(cfg(feature = "jetstream")))]
@@ -81,7 +82,7 @@ pub use ame_bus_macros::jetstream;
 ///
 /// ## Supported attributes
 ///
-/// - `name="foo"` (required): Consumer name. If the consumer is durable, it will also be the durable name.
+/// - `name="foo"`: Consumer name. If the consumer is durable, it will also be the durable name. Default to the struct name in snake case.
 /// - `push`: Use push-based consumer. Cannot be used with `pull`.
 /// - `pull`: Use pull-based consumer. Cannot be used with `push`. Default if neither `push` nor `pull` is specified.
 /// - `durable`: Create a durable consumer. Default is false.
