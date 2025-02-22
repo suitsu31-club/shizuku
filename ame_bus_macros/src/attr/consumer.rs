@@ -386,6 +386,7 @@ impl ParsedJetStreamConsumerConfig {
             ConsumerType::Push { .. } => quote! {async_nats::jetstream::consumer::push::Config},
             ConsumerType::Pull { .. } => quote! {async_nats::jetstream::consumer::pull::Config},
         };
+        
         let type_spec_options = match self.consumer_type {
             ConsumerType::Push {
                 deliver_subject,
@@ -439,7 +440,7 @@ impl ParsedJetStreamConsumerConfig {
         };
         let filter_subject = self
             .filter_subject
-            .map(|subject| quote! { filter_subject: Some(#subject.to_owned()), });
+            .map(|subject| quote! { filter_subject: #subject.to_owned(), });
         let headers_only = if self.headers_only {
             quote! { headers_only: true, }
         } else {
@@ -464,7 +465,7 @@ impl ParsedJetStreamConsumerConfig {
             ConsumerType::Push { .. } => quote! {async_nats::jetstream::consumer::push::Config},
             ConsumerType::Pull { .. } => quote! {async_nats::jetstream::consumer::pull::Config},
         };
-        let consumer_name = self.consumer_name.clone();
+        let consumer_name = self.consumer_name.clone().unwrap();
         let config = self.gen_config();
         quote! {
             #[async_trait::async_trait]

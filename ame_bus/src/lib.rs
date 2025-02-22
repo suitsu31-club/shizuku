@@ -19,7 +19,7 @@ pub mod message;
 /// Tokio concurrency utilities.
 pub mod pool;
 
-#[cfg(any(feature = "service", doc))]
+#[cfg(any(feature = "service", doc, doctest))]
 #[cfg_attr(docsrs, doc(cfg(feature = "service")))]
 /// Service RPC support. Using just NATS core features.
 pub mod service_rpc;
@@ -33,8 +33,10 @@ pub use message::{NatsJsonMessage, NatsMessage};
 /// ## Example:
 ///
 /// ```rust
+/// # #[cfg(feature = "jetstream")]
 /// # use ame_bus_macros::jetstream;
 ///
+/// # #[cfg(feature = "jetstream")]
 /// #[jetstream(
 ///     name = "user",
 ///     description = "User successful registered event",
@@ -64,8 +66,10 @@ pub use ame_bus_macros::jetstream;
 /// ## Example
 ///
 /// ```rust
+/// # #[cfg(feature = "jetstream")]
 /// # use ame_bus_macros::{jetstream, jetstream_consumer};
 ///
+/// # #[cfg(feature = "jetstream")]
 /// #[jetstream(
 ///      name = "user",
 ///      description = "User successful registered event consumer",
