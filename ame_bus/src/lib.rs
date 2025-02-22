@@ -121,3 +121,29 @@ pub use ame_bus_macros::jetstream_consumer;
 /// }
 /// ```
 pub use ame_bus_macros::NatsJsonMessage;
+
+/// # RPC Service
+/// 
+/// Mark a struct as an RPC service.
+/// 
+/// ## Example
+/// ```rust
+/// # use ame_bus_macros::rpc_service;
+/// #[rpc_service(
+///     name = "user.info",
+///     version = "0.1.0",
+/// )]
+/// pub struct UserInfoService {
+///     // fields, like database connection
+/// }
+/// ```
+/// 
+/// ## Supported attributes
+/// 
+/// - `name="foo"` (required): Service name. Can be a NATS path.
+/// - `description="foo"`: Service description.
+/// - `version="0.1.0"`: Service version. Default is `0.1.0`.
+/// - `queue_group="foo"`: Queue group name.
+/// 
+/// Usually, you need to set the `queue_group` to make the service scaled properly.
+pub use ame_bus_macros::rpc_service;

@@ -4,8 +4,9 @@ use crate::NatsMessage;
 #[doc(hidden)]
 pub trait NatsRpcServiceMeta {
     const SERVICE_NAME: &'static str;
-    const SERVICE_VERSION: Option<&'static str> = None;
+    const SERVICE_VERSION: &'static str;
     const SERVICE_DESCRIPTION: Option<&'static str> = None;
+    const QUEUE_GROUP: Option<&'static str> = None;
 }
 
 #[doc(hidden)]
@@ -13,7 +14,7 @@ pub trait NatsRpcServiceMeta {
 /// # NATS RPC Service
 ///
 /// RPC service's state. Should have everything needed to process the request of all endpoints.
-pub trait NatsRpcService: Send + Sync + NatsRpcServiceMeta {
+pub trait NatsRpcService: Send + Sync {
     /// Set up the [async_nats::service::Service].
     async fn set_up_service(
         nats: &async_nats::Client,
@@ -52,6 +53,7 @@ pub trait NatsRpcRequestMeta {
 impl<T> NatsCoreMessageSendTrait for T
 where
     T: NatsRpcRequestMeta + NatsMessage,
+    T::Service: NatsRpcServiceMeta,
 {
     fn subject(&self) -> String {
         format!("service.{}.{}", T::Service::SERVICE_NAME, T::ENDPOINT_NAME)
