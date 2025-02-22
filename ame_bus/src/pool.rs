@@ -37,7 +37,6 @@ impl TokioPool {
 #[async_trait]
 /// Trait for creating an async application with a pool.
 pub trait PooledApp: Sized {
-
     /// The number of concurrent tasks per CPU core.
     const CPU_CONCURRENT: usize = 4;
 

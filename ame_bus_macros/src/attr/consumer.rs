@@ -1,5 +1,5 @@
-use proc_macro::TokenStream;
 use convert_case::{Case, Casing};
+use proc_macro::TokenStream;
 use proc_macro2::Ident;
 use quote::quote;
 use syn::parse::{Parse, ParseStream};
@@ -86,7 +86,7 @@ struct ParsedJetStreamConsumerConfig {
 enum DurableSetting {
     Ephemeral,
     Durable(String),
-    DurableDefaultName
+    DurableDefaultName,
 }
 
 enum ConsumerType {
@@ -386,7 +386,7 @@ impl ParsedJetStreamConsumerConfig {
             ConsumerType::Push { .. } => quote! {async_nats::jetstream::consumer::push::Config},
             ConsumerType::Pull { .. } => quote! {async_nats::jetstream::consumer::pull::Config},
         };
-        
+
         let type_spec_options = match self.consumer_type {
             ConsumerType::Push {
                 deliver_subject,
@@ -407,7 +407,7 @@ impl ParsedJetStreamConsumerConfig {
         let durable_option = match self.durable {
             DurableSetting::Ephemeral => quote! { durable_name: None, },
             DurableSetting::Durable(name) => quote! { durable_name: Some(#name.to_owned()), },
-            _ => unreachable!()
+            _ => unreachable!(),
         };
         let deliver_policy = match self.deliver_policy {
             DeliverPolicy::All => {

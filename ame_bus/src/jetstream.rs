@@ -92,11 +92,11 @@ pub trait NatsJetStreamConsumerMeta: Send + Sync + NatsJetStreamMeta {
 /// ```
 pub trait SubscribeJetStreamEvent: NatsMessage {
     /// The stateful consumer.
-    /// 
-    /// The consumer should have everything needed to process the event. 
+    ///
+    /// The consumer should have everything needed to process the event.
     /// Like database connection, `async_nats::jetstream::Context`, etc.
     type EventConsumer: NatsJetStreamConsumerMeta;
-    
+
     /// Emit the event.
     async fn emit(consumer: Arc<Self::EventConsumer>, event: Self) -> anyhow::Result<()>;
 }

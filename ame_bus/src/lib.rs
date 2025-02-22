@@ -23,6 +23,8 @@ pub mod pool;
 #[cfg_attr(docsrs, doc(cfg(feature = "service")))]
 /// Service RPC support. Using just NATS core features.
 pub mod service_rpc;
+
+#[cfg(test)]
 mod tests;
 
 pub use message::{NatsJsonMessage, NatsMessage};

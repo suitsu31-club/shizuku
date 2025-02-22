@@ -1,3 +1,1 @@
-#![cfg(test)]
-
 mod macros;

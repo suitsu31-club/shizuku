@@ -25,7 +25,6 @@ pub trait NatsRpcService: Send + Sync + NatsRpcServiceMeta {
 ///
 /// Implement this trait to process the request of the endpoint.
 pub trait NatsRpcRequest: NatsMessage + NatsRpcRequestMeta {
-
     /// Response type of the endpoint.
     type Response: NatsMessage;
 
@@ -43,7 +42,6 @@ pub trait NatsRpcRequest: NatsMessage + NatsRpcRequestMeta {
 /// If you don't have a good reason, you should always use macro to implement this trait.
 #[doc(hidden)]
 pub trait NatsRpcRequestMeta {
-
     /// Name of the endpoint.
     const ENDPOINT_NAME: &'static str;
 
@@ -51,14 +49,11 @@ pub trait NatsRpcRequestMeta {
     type Service: NatsRpcService;
 }
 
-impl <T> NatsCoreMessageSendTrait for T
-    where T: NatsRpcRequestMeta + NatsMessage
+impl<T> NatsCoreMessageSendTrait for T
+where
+    T: NatsRpcRequestMeta + NatsMessage,
 {
     fn subject(&self) -> String {
-        format!(
-            "service.{}.{}",
-            T::Service::SERVICE_NAME,
-            T::ENDPOINT_NAME
-        )
+        format!("service.{}.{}", T::Service::SERVICE_NAME, T::ENDPOINT_NAME)
     }
 }

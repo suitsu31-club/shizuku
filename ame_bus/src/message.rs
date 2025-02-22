@@ -68,9 +68,10 @@ impl NatsJsonMessage for serde_json::Value {}
 pub trait NatsCoreMessageSendTrait: NatsMessage {
     /// The subject of the message. Can be dynamic.
     fn subject(&self) -> String;
-    
+
+    #[doc(hidden)]
     /// Publish the message to the NATS server.
-    /// 
+    ///
     /// DO NOT OVERRIDE THIS FUNCTION.
     async fn publish(&self, nats: &async_nats::Client) -> anyhow::Result<()> {
         let subject = self.subject();
