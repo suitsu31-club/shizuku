@@ -167,10 +167,11 @@ impl ParsedRpcOptions {
     pub fn impl_nats_rpc_service_trait(self, ident: Ident) -> TokenStream {
         let config = self.to_config_tokens();
         quote! {
+            #[async_trait::async_trait]
             impl ame_bus::service_rpc::NatsRpcService for #ident {
                 async fn set_up_service(
                     nats: &async_nats::Client,
-                ) -> anyhow::Result<async_nats::service::Service> {
+                ) -> Result<async_nats::service::Service, async_nats::Error> {
                     use async_nats::service::ServiceExt;
                     let service = nats
                         #config

@@ -18,7 +18,7 @@ pub trait NatsRpcService: Send + Sync {
     /// Set up the [async_nats::service::Service].
     async fn set_up_service(
         nats: &async_nats::Client,
-    ) -> anyhow::Result<async_nats::service::Service>;
+    ) -> Result<async_nats::service::Service, async_nats::Error>;
 }
 
 #[async_trait::async_trait]
