@@ -3,12 +3,10 @@
 #![doc = include_str!("../README.md")]
 
 #[cfg(feature = "jetstream")]
-#[cfg_attr(docsrs, doc(cfg(feature = "jetstream")))]
 /// [JetStream](https://docs.nats.io/nats-concepts/jetstream) support.
 pub mod jetstream;
 
 #[cfg(feature = "jetstream")]
-#[cfg_attr(docsrs, doc(cfg(feature = "jetstream")))]
 /// [Key/Value Store](https://docs.nats.io/nats-concepts/jetstream/key-value-store) support.
 pub mod kv;
 
@@ -19,7 +17,6 @@ pub mod message;
 pub mod pool;
 
 #[cfg(feature = "service")]
-#[cfg_attr(docsrs, doc(cfg(feature = "service")))]
 /// Service RPC support. Using just NATS core features.
 pub mod service_rpc;
 
@@ -57,7 +54,6 @@ pub use message::{NatsJsonMessage, NatsMessage};
 /// Attention that these options only work if the stream is not created yet and the stream
 /// is created with these options.
 #[cfg(feature = "jetstream")]
-#[cfg_attr(docsrs, doc(cfg(feature = "jetstream")))]
 pub use ame_bus_macros::jetstream;
 
 /// # Configure the JetStream consumer.
@@ -116,7 +112,6 @@ pub use ame_bus_macros::jetstream;
 /// }
 /// ```
 #[cfg(feature = "jetstream")]
-#[cfg_attr(docsrs, doc(cfg(feature = "jetstream")))]
 pub use ame_bus_macros::jetstream_consumer;
 
 /// Implement `NatsJsonMessage` trait if it has already implemented `Serialize` and `Deserialize` traits.
@@ -159,7 +154,6 @@ pub use ame_bus_macros::NatsJsonMessage;
 /// 
 /// Usually, you need to set the `queue_group` to make the service scaled properly.
 #[cfg(feature = "service")]
-#[cfg_attr(docsrs, doc(cfg(feature = "service")))]
 pub use ame_bus_macros::rpc_service;
 
 /// # RPC Route Register
@@ -249,7 +243,6 @@ pub use ame_bus_macros::rpc_service;
 /// }
 /// ```
 #[cfg(feature = "service")]
-#[cfg_attr(docsrs, doc(cfg(feature = "service")))]
 pub use ame_bus_macros::rpc_route;
 
 pub use tracing;
