@@ -149,35 +149,31 @@ impl ParsedRpcOptions {
         let service_version = service_version.unwrap_or("0.1.0".to_string());
         let service_description = service_description.map(|desc| {
             quote! {
-                description: Some(#desc)
+                .description(#desc)
             }
         });
         let queue_group = queue_group.map(|group| {
             quote! {
-                queue_group: Some(#group)
+                .queue_group(#group)
             }
         });
         quote! {
-            async_nats::service::Config {
-                name: #service_name.to_owned(),
-                version: #service_version.to_owned(),
-                #service_description
-                #queue_group
-                ..Default::default()
-            }
+            .service_builder()
+            #service_description
+            #queue_group
+            .start(#service_name, #service_version)
         }
     }
     pub fn impl_nats_rpc_service_trait(self, ident: Ident) -> TokenStream {
         let config = self.to_config_tokens();
         quote! {
-            #[async_trait::async_trait]
             impl ame_bus::service_rpc::NatsRpcService for #ident {
                 async fn set_up_service(
                     nats: &async_nats::Client,
                 ) -> anyhow::Result<async_nats::service::Service> {
                     use async_nats::service::ServiceExt;
                     let service = nats
-                        .add_service(#config)
+                        #config
                         .await?;
                     Ok(service)
                 }
