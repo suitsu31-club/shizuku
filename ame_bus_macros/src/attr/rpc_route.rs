@@ -1,5 +1,5 @@
 use proc_macro2::{Ident, TokenStream};
-use quote::{quote};
+use quote::{quote, ToTokens};
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::{parse_macro_input, Expr, Lit, Meta, Token, Variant};
@@ -84,25 +84,37 @@ struct RpcEndpointArgs {
 
 impl Parse for RpcEndpointArgs {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        let meta = Punctuated::<Meta, Token![,]>::parse_terminated(input)?;
-        let request = meta
-            .iter()
-            .find_map(|meta| {
-                if let Meta::NameValue(name_value) = meta {
-                    if name_value.path.is_ident("request") {
-                        let Expr::Lit(value) = &name_value.to_owned().value else {
-                            return None;
-                        };
-                        let Lit::Str(request) = &value.lit else {
-                            return None;
-                        };
-                        return Some(Ident::new(&request.value(), request.span()));
-                    }
+        println!("{:?}", input);
+        let options = Punctuated::<Meta, Token![,]>::parse_terminated(input)?;
+        let mut request_ident: Option<_> = None;
+        for meta in options {
+            if let Meta::NameValue(name_value) = meta {
+                if name_value.path.is_ident("request") {
+                    let Expr::Lit(value) = &name_value.to_owned().value else {
+                        return Err(syn::Error::new_spanned(
+                            &name_value.value,
+                            "expected literal",
+                        ));
+                    };
+                    let Lit::Str(request) = &value.lit else {
+                        return Err(syn::Error::new_spanned(
+                            &value.lit,
+                            "expected string literal",
+                        ));
+                    };
+                    request_ident = Some(Ident::new(&request.value(), request.span()));
                 }
-                None
-            })
-            .ok_or_else(|| syn::Error::new_spanned(meta, "Expected `request` attribute"))?;
-        Ok(RpcEndpointArgs { request })
+            }
+        }
+        let Some(request_ident) = request_ident else {
+            return Err(syn::Error::new(
+                input.span(),
+                "Expected `request` attribute",
+            ));
+        };
+        Ok(RpcEndpointArgs {
+            request: request_ident,
+        })
     }
 }
 
@@ -285,7 +297,7 @@ pub fn rpc_route_impl(
                         return None
                     };
                     if list.path.is_ident("rpc_endpoint") {
-                        Some(list.tokens.clone())
+                        Some(list.to_token_stream())
                     } else { 
                         None
                     }
