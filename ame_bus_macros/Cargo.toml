@@ -3,6 +3,7 @@ name = "ame_bus_macros"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
+description = "proc-macro for ame-bus"
 repository = "https://github.com/Ame-Build/ame-bus"
 authors = ["Nikaidou Haruki <nharuki@pm.me>"]
 
