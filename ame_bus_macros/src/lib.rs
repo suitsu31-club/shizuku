@@ -22,3 +22,8 @@ pub fn jetstream_consumer(attr: TokenStream, item: TokenStream) -> TokenStream {
 pub fn rpc_service(attr: TokenStream, item: TokenStream) -> TokenStream {
     attr::rpc_service::rpc_service_impl(attr, item)
 }
+
+#[proc_macro_attribute]
+pub fn rpc_route(attr: TokenStream, item: TokenStream) -> TokenStream {
+    attr::rpc_route::rpc_route_impl(attr, item)
+}

@@ -2,7 +2,7 @@ use proc_macro2::{Ident, TokenStream};
 use quote::{quote, ToTokens};
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
-use syn::{parse_macro_input, Attribute, Expr, Meta, Token, Variant};
+use syn::{parse_macro_input, Expr, Meta, Token, Variant};
 
 /// Args of `#[rpc_route(service = "service_name")]` attribute.
 struct RpcEndpointRouteArgs {
@@ -266,23 +266,39 @@ pub fn rpc_route_impl(
         }
     };
     let variants: Vec<_> = variants.iter().map(|v| v.clone()).collect();
-    let variants_args: Vec<RpcEndpointArgs> = variants
-        .iter()
-        .map::<RpcEndpointArgs, _>(|v| {
-            let token = v.to_token_stream().into();
-            let result = syn::parse_macro_input!(token as RpcEndpointArgs);
-            result
-        })
-        .collect::<Vec<_>>();
-    
-    let routes: Vec<(_,_)> = variants.iter().cloned().zip(variants_args).collect();
-    
+    let mut variants_args: Vec<RpcEndpointArgs> = Vec::new();
+    for variant in variants.iter() {
+        let args: TokenStream = variant.attrs
+            .iter()
+            .filter_map(
+                |arg| {
+                    let Meta::List(list) = &arg.meta else {
+                        return None
+                    };
+                    if list.path.is_ident("rpc_endpoint") {
+                        Some(list.tokens.clone())
+                    } else { 
+                        None
+                    }
+                }
+            )
+            .take(1)
+            .collect();
+            
+        let args = args.into();
+        let args = parse_macro_input!(args as RpcEndpointArgs);
+        variants_args.push(args);
+    }
+    let variants_args = variants_args;
+
+    let routes: Vec<(_, _)> = variants.iter().cloned().zip(variants_args).collect();
+
     let full_info = RouteTableEnumInfo {
         service,
         routes,
         enum_ident: enum_name,
         nats_connection_static: nats_connection,
     };
-    
+
     full_info.expand().into()
 }
