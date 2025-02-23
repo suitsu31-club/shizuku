@@ -1,14 +1,13 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 #![warn(missing_docs)]
-#![allow(rustdoc::missing_crate_level_docs)]
 #![doc = include_str!("../../README.md")]
 
-#[cfg(any(feature = "jetstream", doc))]
+#[cfg(feature = "jetstream")]
 #[cfg_attr(docsrs, doc(cfg(feature = "jetstream")))]
 /// [JetStream](https://docs.nats.io/nats-concepts/jetstream) support.
 pub mod jetstream;
 
-#[cfg(any(feature = "jetstream", doc))]
+#[cfg(feature = "jetstream")]
 #[cfg_attr(docsrs, doc(cfg(feature = "jetstream")))]
 /// [Key/Value Store](https://docs.nats.io/nats-concepts/jetstream/key-value-store) support.
 pub mod kv;
@@ -19,7 +18,7 @@ pub mod message;
 /// Tokio concurrency utilities.
 pub mod pool;
 
-#[cfg(any(feature = "service", doc, doctest))]
+#[cfg(feature = "service")]
 #[cfg_attr(docsrs, doc(cfg(feature = "service")))]
 /// Service RPC support. Using just NATS core features.
 pub mod service_rpc;
@@ -35,10 +34,8 @@ pub use message::{NatsJsonMessage, NatsMessage};
 /// ## Example:
 ///
 /// ```rust
-/// # #[cfg(feature = "jetstream")]
 /// # use ame_bus_macros::jetstream;
 ///
-/// # #[cfg(feature = "jetstream")]
 /// #[jetstream(
 ///     name = "user",
 ///     description = "User successful registered event",
@@ -59,6 +56,8 @@ pub use message::{NatsJsonMessage, NatsMessage};
 ///
 /// Attention that these options only work if the stream is not created yet and the stream
 /// is created with these options.
+#[cfg(feature = "jetstream")]
+#[cfg_attr(docsrs, doc(cfg(feature = "jetstream")))]
 pub use ame_bus_macros::jetstream;
 
 /// # Configure the JetStream consumer.
@@ -68,10 +67,8 @@ pub use ame_bus_macros::jetstream;
 /// ## Example
 ///
 /// ```rust
-/// # #[cfg(feature = "jetstream")]
 /// # use ame_bus_macros::{jetstream, jetstream_consumer};
 ///
-/// # #[cfg(feature = "jetstream")]
 /// #[jetstream(
 ///      name = "user",
 ///      description = "User successful registered event consumer",
@@ -105,6 +102,21 @@ pub use ame_bus_macros::jetstream;
 /// only with push consumer:
 /// - `deliver_subject="foo.bar"`: Subject to deliver messages to.
 /// - `deliver_group="foo"`: Consumer group to deliver messages to.
+///
+/// ## Example:
+///
+/// ```rust
+/// # use ame_bus_macros::*;
+///
+/// #[jetstream(name = "mail", description = "Mail service")]
+/// #[jetstream_consumer(pull, durable, filter_subject="mail.send")]
+/// struct EmailSendEventConsumer {
+///     smtp_connection: (),
+///     email_template: String,
+/// }
+/// ```
+#[cfg(feature = "jetstream")]
+#[cfg_attr(docsrs, doc(cfg(feature = "jetstream")))]
 pub use ame_bus_macros::jetstream_consumer;
 
 /// Implement `NatsJsonMessage` trait if it has already implemented `Serialize` and `Deserialize` traits.
@@ -146,7 +158,99 @@ pub use ame_bus_macros::NatsJsonMessage;
 /// - `queue_group="foo"`: Queue group name.
 /// 
 /// Usually, you need to set the `queue_group` to make the service scaled properly.
+#[cfg(feature = "service")]
+#[cfg_attr(docsrs, doc(cfg(feature = "service")))]
 pub use ame_bus_macros::rpc_service;
+
+/// # RPC Route Register
+///
+/// Register the route, and implement the [PooledApp](pool::PooledApp) trait.
+///
+/// ## Usage
+///
+/// Use an enum as route table, mark the enum with `#[rpc_route()]` attribute.
+///
+/// `#[rpc_route()]` must have these args:
+///
+/// - `service`: The service struct name.
+/// - `nats_connection`: The NATS connection, should be `&async_nats::Client`.
+///
+/// *To avoid lifetime issue, use `&'static async_nats::Client` with `OnceCell<Client> is suggested.*
+///
+/// To register the requests, each variant in enum must have `#[rpc_endpoint()]` attribute.
+///
+/// `#[rpc_endpoint(request = "RequestName")]` must have these args:
+///
+/// - `request`: the request, must implement [NatsRpcRequest](crate::service_rpc::NatsRpcRequest) trait.
+///
+/// ## Example
+///
+/// ```rust
+/// # use ame_bus_macros::*;
+/// # use ame_bus::service_rpc::NatsRpcRequestMeta;
+/// use tokio::sync::OnceCell;
+/// use serde::{Deserialize, Serialize};
+/// use ame_bus::service_rpc::NatsRpcRequest;
+///
+/// // don't forget to set up the NATS connection
+/// static NATS_CONNECTION: OnceCell<async_nats::Client> = OnceCell::const_new();
+/// 
+/// #[rpc_service(
+///     name = "user.info",
+///     version = "0.1.0",
+/// )]
+/// pub struct UserInfoService {
+///     // fields, like database connection
+/// }
+///
+/// #[derive(Debug, Clone, Serialize, Deserialize, NatsJsonMessage)]
+/// struct UserAvatarReq {
+///     user_id: String,
+/// }
+/// 
+/// # impl NatsRpcRequestMeta for UserAvatarReq {
+/// #     const ENDPOINT_NAME: &'static str = "avatar";
+/// #     type Service = UserInfoService;
+/// # }
+///
+/// #[async_trait::async_trait]
+/// impl NatsRpcRequest for UserAvatarReq {
+///     type Response = ();
+///
+///     async fn process_request(service_state: &Self::Service, request: Self) -> anyhow::Result<Self::Response> {
+///         Ok(())
+///     }
+/// }
+///
+/// #[derive(Debug, Clone, Serialize, Deserialize, NatsJsonMessage)]
+/// struct UserMetaReq {
+///     user_id: String,
+/// }
+/// 
+/// # impl NatsRpcRequestMeta for UserMetaReq {
+/// #     const ENDPOINT_NAME: &'static str = "meta";
+/// #     type Service = UserInfoService;
+/// # }
+/// 
+/// #[async_trait::async_trait]
+/// impl NatsRpcRequest for UserMetaReq {
+///     type Response = ();
+///     async fn process_request(service_state: &Self::Service, request: Self) -> anyhow::Result<Self::Response> {
+///         Ok(())
+///     }
+/// }
+///
+/// #[rpc_route(service="UserInfoService", nats_connection="NATS_CONNECTION.get().unwrap()")]
+/// enum UserInfoRoute {
+///     #[rpc_endpoint(request="UserAvatarReq")]
+///     UserAvatar,
+///     #[rpc_endpoint(request="UserMetaReq")]
+///     UserMeta,
+/// }
+/// ```
+#[cfg(feature = "service")]
+#[cfg_attr(docsrs, doc(cfg(feature = "service")))]
+pub use ame_bus_macros::rpc_route;
 
 pub use tracing;
 pub use futures;

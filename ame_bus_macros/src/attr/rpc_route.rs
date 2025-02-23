@@ -1,13 +1,13 @@
 use proc_macro2::{Ident, TokenStream};
-use quote::{quote, ToTokens};
+use quote::{quote};
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
-use syn::{parse_macro_input, Expr, Meta, Token, Variant};
+use syn::{parse_macro_input, Expr, Lit, Meta, Token, Variant};
 
 /// Args of `#[rpc_route(service = "service_name")]` attribute.
 struct RpcEndpointRouteArgs {
     pub service: Ident,
-    pub nats_connection: Ident,
+    pub nats_connection: Expr,
 }
 
 impl Parse for RpcEndpointRouteArgs {
@@ -40,10 +40,7 @@ impl Parse for RpcEndpointRouteArgs {
                             service = Some(Ident::new(&service_name.value(), service_name.span()));
                         }
                         ("nats_connection", syn::Lit::Str(nats_connection_name)) => {
-                            nats_connection = Some(Ident::new(
-                                &nats_connection_name.value(),
-                                nats_connection_name.span(),
-                            ));
+                            nats_connection = Some(syn::parse_str(&nats_connection_name.value())?);
                         }
                         other => {
                             return Err(syn::Error::new_spanned(
@@ -87,20 +84,31 @@ struct RpcEndpointArgs {
 
 impl Parse for RpcEndpointArgs {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        let content;
-        syn::parenthesized!(content in input);
-        let _: Ident = content.parse()?;
-        let _: syn::Token![=] = content.parse()?;
-        let request: syn::LitStr = content.parse()?;
-        Ok(RpcEndpointArgs {
-            request: Ident::new(&request.value(), request.span()),
-        })
+        let meta = Punctuated::<Meta, Token![,]>::parse_terminated(input)?;
+        let request = meta
+            .iter()
+            .find_map(|meta| {
+                if let Meta::NameValue(name_value) = meta {
+                    if name_value.path.is_ident("request") {
+                        let Expr::Lit(value) = &name_value.to_owned().value else {
+                            return None;
+                        };
+                        let Lit::Str(request) = &value.lit else {
+                            return None;
+                        };
+                        return Some(Ident::new(&request.value(), request.span()));
+                    }
+                }
+                None
+            })
+            .ok_or_else(|| syn::Error::new_spanned(meta, "Expected `request` attribute"))?;
+        Ok(RpcEndpointArgs { request })
     }
 }
 
 struct RouteTableEnumInfo {
     pub service: Ident,
-    pub nats_connection_static: Ident,
+    pub nats_connection_static: Expr,
     pub routes: Vec<(Variant, RpcEndpointArgs)>,
     pub enum_ident: Ident,
 }
@@ -171,6 +179,7 @@ impl RouteTableEnumInfo {
                     };
                     use std::collections::HashMap;
                     use std::sync::Arc;
+                    use async_nats::service::ServiceExt;
 
                     let service = Self::set_up_service(#nats_connection_static)
                         .await
@@ -270,7 +279,7 @@ pub fn rpc_route_impl(
     for variant in variants.iter() {
         let args: TokenStream = variant.attrs
             .iter()
-            .filter_map(
+            .find_map(
                 |arg| {
                     let Meta::List(list) = &arg.meta else {
                         return None
@@ -282,8 +291,8 @@ pub fn rpc_route_impl(
                     }
                 }
             )
-            .take(1)
-            .collect();
+            .ok_or_else(|| syn::Error::new_spanned(variant, "Expected `rpc_endpoint` attribute"))
+            .unwrap();
             
         let args = args.into();
         let args = parse_macro_input!(args as RpcEndpointArgs);

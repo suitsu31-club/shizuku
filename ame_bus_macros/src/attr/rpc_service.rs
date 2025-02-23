@@ -114,6 +114,22 @@ impl ParsedRpcOptions {
             queue_group,
         } = self;
         let service_version = service_version.unwrap_or("0.1.0".to_string());
+        let service_description = match service_description {
+            Some(desc) => quote! {
+                Some(#desc)
+            },
+            None => quote! {
+                None
+            },
+        };
+        let queue_group = match queue_group {
+            Some(group) => quote! {
+                Some(#group)
+            },
+            None => quote! {
+                None
+            },
+        };
         quote! {
             impl ame_bus::service_rpc::NatsRpcServiceMeta for #ident {
                 const SERVICE_NAME: &'static str = #service_name;
@@ -159,6 +175,7 @@ impl ParsedRpcOptions {
                 async fn set_up_service(
                     nats: &async_nats::Client,
                 ) -> anyhow::Result<async_nats::service::Service> {
+                    use async_nats::service::ServiceExt;
                     let service = nats
                         .add_service(#config)
                         .await?;
