@@ -1,4 +1,4 @@
-use crate::message::NatsCoreMessageSendTrait;
+use crate::message::{NatsCoreMessageSendTrait, StaticSubjectNatsMessage};
 use crate::NatsMessage;
 
 #[doc(hidden)]
@@ -49,12 +49,19 @@ pub trait NatsRpcRequestMeta {
     type Service: NatsRpcService;
 }
 
+impl<T> StaticSubjectNatsMessage for T
+where
+    T: NatsRpcRequestMeta + NatsMessage,
+    T::Service: NatsRpcServiceMeta,
+{
+    fn subject() -> String {
+        format!("service.{}.{}", T::Service::SERVICE_NAME, T::ENDPOINT_NAME)
+    }
+}
+
 impl<T> NatsCoreMessageSendTrait for T
 where
     T: NatsRpcRequestMeta + NatsMessage,
     T::Service: NatsRpcServiceMeta,
 {
-    fn subject(&self) -> String {
-        format!("service.{}.{}", T::Service::SERVICE_NAME, T::ENDPOINT_NAME)
-    }
 }

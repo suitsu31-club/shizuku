@@ -65,9 +65,8 @@ impl NatsJsonMessage for serde_json::Value {}
 
 #[async_trait::async_trait]
 /// Message in NATS core (including service RPC).
-pub trait NatsCoreMessageSendTrait: NatsMessage {
-    /// The subject of the message. Can be dynamic.
-    fn subject(&self) -> String;
+pub trait NatsCoreMessageSendTrait: NatsMessage + DynamicSubjectNatsMessage {
+
 
     #[doc(hidden)]
     /// Publish the message to the NATS server.
@@ -78,5 +77,30 @@ pub trait NatsCoreMessageSendTrait: NatsMessage {
         let bytes = self.to_bytes()?;
         nats.publish(subject, bytes.to_vec().into()).await?;
         Ok(())
+    }
+}
+
+/// NATS Message that has a subject. 
+/// 
+/// Can be dynamic or static. Can be NATS core message or JetStream message.
+pub trait DynamicSubjectNatsMessage {
+    /// The subject of the message. Can be dynamic.
+    fn subject(&self) -> String;
+}
+
+/// NATS Message that has a subject.
+/// 
+/// Must be static. Can be NATS core message or JetStream message.
+pub trait StaticSubjectNatsMessage {
+    /// The subject of the message. Must be static.
+    fn subject() -> String;
+}
+
+impl<T> DynamicSubjectNatsMessage for T
+where
+    T: StaticSubjectNatsMessage,
+{
+    fn subject(&self) -> String {
+        T::subject()
     }
 }

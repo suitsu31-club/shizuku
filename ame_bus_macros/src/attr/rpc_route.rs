@@ -36,10 +36,10 @@ impl Parse for RpcEndpointRouteArgs {
                         ));
                     };
                     match (ident_str.as_str(), value.lit) {
-                        ("service", syn::Lit::Str(service_name)) => {
+                        ("service", Lit::Str(service_name)) => {
                             service = Some(Ident::new(&service_name.value(), service_name.span()));
                         }
-                        ("nats_connection", syn::Lit::Str(nats_connection_name)) => {
+                        ("nats_connection", Lit::Str(nats_connection_name)) => {
                             nats_connection = Some(syn::parse_str(&nats_connection_name.value())?);
                         }
                         other => {
@@ -84,13 +84,12 @@ struct RpcEndpointArgs {
 
 impl Parse for RpcEndpointArgs {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        println!("{:?}", input);
         let options = Punctuated::<Meta, Token![,]>::parse_terminated(input)?;
         let mut request_ident: Option<_> = None;
         for meta in options {
             if let Meta::NameValue(name_value) = meta {
                 if name_value.path.is_ident("request") {
-                    let Expr::Lit(value) = &name_value.to_owned().value else {
+                    let Expr::Lit(value) = &name_value.value else {
                         return Err(syn::Error::new_spanned(
                             &name_value.value,
                             "expected literal",
@@ -131,8 +130,9 @@ impl RouteTableEnumInfo {
         self.routes
             .iter()
             .map(|(variant, RpcEndpointArgs { request })| {
+                let variant_ident = variant.ident.clone();
                 quote! {
-                    (#request::subject(), #enum_ident::#variant)
+                    (#request::subject(), #enum_ident::#variant_ident)
                 }
             })
             .collect()
@@ -142,13 +142,21 @@ impl RouteTableEnumInfo {
         self.routes
             .iter()
             .map(|(variant, RpcEndpointArgs { request })| {
+                let variant_ident = variant.ident.clone();
                 quote! {
-                    Some(#enum_ident::#variant) => #request::process_request(
-                        service.as_ref(),
-                        #request::parse_request(&request)?,
-                    )
-                    .await
-                    .map(|response| response.to_bytes())
+                    Some(#enum_ident::#variant_ident) => {
+                        match #request::parse_from_bytes(payload.as_ref()) {
+                            Ok(parsed) => #request::process_request(
+                                service.as_ref(),
+                                parsed
+                            )
+                            .await
+                            .map(|response| response.to_bytes().unwrap()),
+                            Err(err) => {
+                                Err(err.into())
+                            }
+                        }
+                    }
                 }
             })
             .collect()
@@ -160,7 +168,7 @@ impl RouteTableEnumInfo {
                 quote! {
                     service.endpoint(#request::ENDPOINT_NAME)
                         .await
-                        .expect("Failed to create endpoint");
+                        .expect("Failed to create endpoint")
                 }
             })
             .collect()
@@ -181,13 +189,17 @@ impl RouteTableEnumInfo {
             #[async_trait::async_trait]
             impl ame_bus::pool::PooledApp for #service {
                 async fn start_with_pool(
-                    app: std::sync::Arc<Self>, pool: ame_bus::pool::TokioPool
+                    app: std::sync::Arc<Self>, mut pool: ame_bus::pool::TokioPool
                 ) {
                     use ame_bus::{
                         NatsMessage,
                         service_rpc::*,
                         tracing::{error, warn},
-                        futures::{self, StreamExt}
+                        futures::{self, StreamExt},
+                        message::{
+                            NatsCoreMessageSendTrait, 
+                            StaticSubjectNatsMessage, 
+                        }
                     };
                     use std::collections::HashMap;
                     use std::sync::Arc;
@@ -222,7 +234,7 @@ impl RouteTableEnumInfo {
                         nats_client: &async_nats::Client,
                     ) {
                         let exe_result = match subjects_list.get(&this_request_subject) {
-                            #(#route_match_arms),*
+                            #(#route_match_arms),*,
                             None => {
                                 warn!("Unknown subject: {}", this_request_subject);
                                 return;
@@ -231,7 +243,7 @@ impl RouteTableEnumInfo {
                         match exe_result {
                             Ok(response) => {
                                 if let Some(reply) = reply {
-                                    if let Err(err) = nats_client.publish(reply, response).await {
+                                    if let Err(err) = nats_client.publish(reply, response.to_vec().into()).await {
                                         error!("Failed to publish response: {:?}", err);
                                     }
                                 }
@@ -254,7 +266,7 @@ impl RouteTableEnumInfo {
                             process_all_request(
                                 Arc::clone(&app),
                                 Arc::clone(&subjects_list),
-                                subject,
+                                subject.to_string(),
                                 payload,
                                 reply,
                                 #nats_connection_static,
@@ -289,23 +301,22 @@ pub fn rpc_route_impl(
     let variants: Vec<_> = variants.iter().map(|v| v.clone()).collect();
     let mut variants_args: Vec<RpcEndpointArgs> = Vec::new();
     for variant in variants.iter() {
-        let args: TokenStream = variant.attrs
+        let args: TokenStream = variant
+            .attrs
             .iter()
-            .find_map(
-                |arg| {
-                    let Meta::List(list) = &arg.meta else {
-                        return None
-                    };
-                    if list.path.is_ident("rpc_endpoint") {
-                        Some(list.to_token_stream())
-                    } else { 
-                        None
-                    }
+            .find_map(|arg| {
+                let Meta::List(list) = &arg.meta else {
+                    return None;
+                };
+                if list.path.is_ident("rpc_endpoint") {
+                    Some(list.tokens.to_token_stream())
+                } else {
+                    None
                 }
-            )
+            })
             .ok_or_else(|| syn::Error::new_spanned(variant, "Expected `rpc_endpoint` attribute"))
             .unwrap();
-            
+
         let args = args.into();
         let args = parse_macro_input!(args as RpcEndpointArgs);
         variants_args.push(args);
