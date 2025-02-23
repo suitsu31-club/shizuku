@@ -175,7 +175,7 @@ pub use ame_bus_macros::rpc_service;
 /// - `service`: The service struct name.
 /// - `nats_connection`: The NATS connection, should be `&async_nats::Client`.
 ///
-/// *To avoid lifetime issue, use `&'static async_nats::Client` with `OnceCell<Client> is suggested.*
+/// *To avoid lifetime issue, use `&'static async_nats::Client` with `OnceCell<Client>` is suggested.*
 ///
 /// To register the requests, each variant in enum must have `#[rpc_endpoint()]` attribute.
 ///

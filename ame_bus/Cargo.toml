@@ -1,6 +1,6 @@
 [package]
 name = "ame-bus"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/Ame-Build/ame-bus.git"
@@ -8,7 +8,7 @@ description = "Modern microservices framework based on NATS."
 authors = ["Nikaidou Haruki <nharuki@pm.me>"]
 
 [package.metadata.docs.rs]
-all-features = true
+features = ["full"]
 
 [dependencies]
 tokio = { workspace = true}
