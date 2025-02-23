@@ -1,6 +1,6 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 #![warn(missing_docs)]
-#![doc = include_str!("README.md")]
+#![doc = include_str!("../README.md")]
 
 #[cfg(feature = "jetstream")]
 #[cfg_attr(docsrs, doc(cfg(feature = "jetstream")))]
