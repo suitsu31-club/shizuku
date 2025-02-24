@@ -1,5 +1,6 @@
 use serde::de::Error;
 use std::sync::Arc;
+use async_nats::jetstream::Context;
 
 #[async_trait::async_trait]
 /// # NATS Message
@@ -39,7 +40,7 @@ impl<T: NatsJsonMessage> NatsMessage for T {
 ///
 /// Implement this trait will make the struct can be serialized and deserialized to JSON bytes.
 ///
-/// Based on `serde_json` serialization and deseriali + async_nats::jetstream::consumer::FromConsumerzation.
+/// Based on `serde_json` serialization and deserialization.
 ///
 /// implement `NatsJsonMessage` will automatically implement `NatsMessage` for the type.
 pub trait NatsJsonMessage
@@ -67,15 +68,29 @@ impl NatsJsonMessage for serde_json::Value {}
 /// Message in NATS core (including service RPC).
 pub trait NatsCoreMessageSendTrait: NatsMessage + DynamicSubjectNatsMessage {
 
-
     #[doc(hidden)]
     /// Publish the message to the NATS server.
     ///
-    /// DO NOT OVERRIDE THIS FUNCTION.
+    /// **DO NOT OVERRIDE THIS FUNCTION.**
     async fn publish(&self, nats: &async_nats::Client) -> anyhow::Result<()> {
         let subject = self.subject();
         let bytes = self.to_bytes()?;
         nats.publish(subject, bytes.to_vec().into()).await?;
+        Ok(())
+    }
+}
+
+#[cfg(feature = "jetstream")]
+#[async_trait::async_trait]
+/// Message in NATS JetStream that can be published.
+pub trait JetStreamMessageSendTrait: NatsMessage + DynamicSubjectNatsMessage {
+    
+    #[doc(hidden)]
+    /// Publish the message to the NATS server.
+    /// 
+    /// **DO NOT OVERRIDE THIS FUNCTION.**
+    async fn publish(&self, js_context: &Context) -> anyhow::Result<()> {
+        js_context.publish(self.subject(), self.to_bytes()?.to_vec().into()).await?;
         Ok(())
     }
 }

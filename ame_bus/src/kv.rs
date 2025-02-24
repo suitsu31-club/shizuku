@@ -68,6 +68,24 @@ pub trait NatsKvValue: NatsMessage + Sync + Send {
 }
 
 /// A Key/Value pair for the NATS JetStream Key/Value Store.
+///
+/// The key must be static.
+pub trait NatsStaticKeyKvValue: NatsMessage + Sync + Send {
+    /// The key of kv pair
+    const KEY: &'static str;
+
+    /// The name of the bucket
+    const BUCKET: &'static str;
+}
+
+impl<T> NatsKvValue for T
+    where T: NatsStaticKeyKvValue
+{
+    type Key = &'static str;
+    const BUCKET: &'static str = <Self as NatsStaticKeyKvValue>::BUCKET;
+}
+
+/// A Key/Value pair for the NATS JetStream Key/Value Store.
 pub struct NatsKv<K, V>(pub K, pub V)
 where
     K: Into<String> + Send + Sync,

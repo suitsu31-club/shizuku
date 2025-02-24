@@ -65,7 +65,6 @@ pub trait NatsJetStreamConsumerMeta: Send + Sync + NatsJetStreamMeta {
 /// # use ame_bus::jetstream::SubscribeJetStreamEvent;
 /// # #[cfg(feature = "jetstream")]
 /// # use ame_bus_macros::{jetstream, jetstream_consumer, NatsJsonMessage};
-///
 /// # #[cfg(feature = "jetstream")]
 /// #[jetstream(name = "user")]
 /// #[jetstream_consumer(durable)]

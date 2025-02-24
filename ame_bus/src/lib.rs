@@ -32,7 +32,6 @@ pub use message::{NatsJsonMessage, NatsMessage};
 ///
 /// ```rust
 /// # use ame_bus_macros::jetstream;
-///
 /// #[jetstream(
 ///     name = "user",
 ///     description = "User successful registered event",
@@ -64,7 +63,6 @@ pub use ame_bus_macros::jetstream;
 ///
 /// ```rust
 /// # use ame_bus_macros::{jetstream, jetstream_consumer};
-///
 /// #[jetstream(
 ///      name = "user",
 ///      description = "User successful registered event consumer",
@@ -103,7 +101,6 @@ pub use ame_bus_macros::jetstream;
 ///
 /// ```rust
 /// # use ame_bus_macros::*;
-///
 /// #[jetstream(name = "mail", description = "Mail service")]
 /// #[jetstream_consumer(pull, durable, filter_subject="mail.send")]
 /// struct EmailSendEventConsumer {
@@ -120,7 +117,6 @@ pub use ame_bus_macros::jetstream_consumer;
 /// ```rust
 /// # use serde::{Deserialize, Serialize};
 /// # use ame_bus_macros::NatsJsonMessage;
-///
 /// #[derive(Serialize, Deserialize, NatsJsonMessage)]
 /// pub struct User {
 ///    pub id: String,
