@@ -1,5 +1,6 @@
 use serde::de::Error;
 use std::sync::Arc;
+#[cfg(feature = "jetstream")]
 use async_nats::jetstream::Context;
 
 #[async_trait::async_trait]
