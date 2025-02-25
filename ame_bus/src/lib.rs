@@ -31,8 +31,8 @@ pub use message::{NatsJsonMessage, NatsMessage};
 /// ## Example:
 ///
 /// ```rust
-/// # use ame_bus_macros::jetstream;
-/// #[jetstream(
+/// # use ame_bus_macros::jet;
+/// #[jet(
 ///     name = "user",
 ///     description = "User successful registered event",
 /// )]
@@ -53,7 +53,7 @@ pub use message::{NatsJsonMessage, NatsMessage};
 /// Attention that these options only work if the stream is not created yet and the stream
 /// is created with these options.
 #[cfg(feature = "jetstream")]
-pub use ame_bus_macros::jetstream;
+pub use ame_bus_macros::jet;
 
 /// # Configure the JetStream consumer.
 ///
@@ -62,12 +62,12 @@ pub use ame_bus_macros::jetstream;
 /// ## Example
 ///
 /// ```rust
-/// # use ame_bus_macros::{jetstream, jetstream_consumer};
-/// #[jetstream(
+/// # use ame_bus_macros::{jet, jet_consumer};
+/// #[jet(
 ///      name = "user",
 ///      description = "User successful registered event consumer",
 /// )]
-/// #[jetstream_consumer(
+/// #[jet_consumer(
 ///    name = "user-successful-registered-consumer",
 ///    durable,
 ///    filter_subject = "user.registered",
@@ -101,15 +101,15 @@ pub use ame_bus_macros::jetstream;
 ///
 /// ```rust
 /// # use ame_bus_macros::*;
-/// #[jetstream(name = "mail", description = "Mail service")]
-/// #[jetstream_consumer(pull, durable, filter_subject="mail.send")]
+/// #[jet(name = "mail", description = "Mail service")]
+/// #[jet_consumer(pull, durable, filter_subject="mail.send")]
 /// struct EmailSendEventConsumer {
 ///     smtp_connection: (),
 ///     email_template: String,
 /// }
 /// ```
 #[cfg(feature = "jetstream")]
-pub use ame_bus_macros::jetstream_consumer;
+pub use ame_bus_macros::jet_consumer;
 
 /// Implement `NatsJsonMessage` trait if it has already implemented `Serialize` and `Deserialize` traits.
 ///
