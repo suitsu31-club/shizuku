@@ -111,7 +111,8 @@ pub use ame_bus_macros::jet;
 #[cfg(feature = "jetstream")]
 pub use ame_bus_macros::jet_consumer;
 
-/// Implement `NatsJsonMessage` trait if it has already implemented `Serialize` and `Deserialize` traits.
+/// Implement [NatsJsonMessage](crate::message::NatsJsonMessage) trait if it has already
+/// implemented `Serialize` and `Deserialize` traits.
 ///
 /// example:
 /// ```rust
@@ -240,6 +241,33 @@ pub use ame_bus_macros::rpc_service;
 /// ```
 #[cfg(feature = "service")]
 pub use ame_bus_macros::rpc_route;
+
+/// Implement [NatsCoreMessageSendTrait](crate::message::NatsCoreMessageSendTrait) for the struct.
+/// 
+/// Must implement [NatsMessage](crate::message::NatsMessage) and 
+/// [DynamicSubjectNatsMessage](crate::message::DynamicSubjectNatsMessage) first.
+pub use ame_bus_macros::DeriveCoreMessageSend;
+
+#[cfg(feature = "jetstream")]
+/// Implement [JetStreamMessageSendTrait](crate::message::JetStreamMessageSendTrait) for the struct.
+/// 
+/// Must implement [NatsMessage](crate::message::NatsMessage) and 
+/// [DynamicSubjectNatsMessage](crate::message::DynamicSubjectNatsMessage) first.
+pub use ame_bus_macros::DeriveJetMessageSend;
+
+/// Implement [StaticSubjectNatsMessage](crate::message::StaticSubjectNatsMessage) for the struct.
+/// 
+/// The subject must be static. Implement [StaticSubjectNatsMessage](crate::message::StaticSubjectNatsMessage)
+/// will also implement [DynamicSubjectNatsMessage](crate::message::DynamicSubjectNatsMessage) for the struct.
+/// 
+/// usage: 
+/// 
+/// ```rust
+/// # use ame_bus_macros::nats_message;
+/// #[nats_message(subject = "user.registered")]
+/// pub struct UserRegistered {}
+/// ```
+pub use ame_bus_macros::nats_message;
 
 pub use tracing;
 pub use futures;

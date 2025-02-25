@@ -1,7 +1,7 @@
 use crate as ame_bus;
-use ame_bus_macros::jetstream;
+use ame_bus_macros::jet;
 
-#[jetstream(name = "test", description = "test stream")]
+#[jet(name = "test", description = "test stream")]
 #[allow(dead_code)]
 struct MyStruct {
     field: String,

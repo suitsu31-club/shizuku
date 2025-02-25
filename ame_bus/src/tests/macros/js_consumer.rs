@@ -1,11 +1,11 @@
 #![allow(unused_imports)]
 
 use crate as ame_bus;
-use ame_bus_macros::{jetstream, jetstream_consumer};
+use ame_bus_macros::{jet, jet_consumer};
 
 #[cfg(feature = "jetstream")]
-#[jetstream(name = "test", description = "test stream")]
-#[jetstream_consumer(name = "test", durable)]
+#[jet(name = "test", description = "test stream")]
+#[jet_consumer(name = "test", durable)]
 #[allow(dead_code)]
 struct MyStruct {
     field: String,
