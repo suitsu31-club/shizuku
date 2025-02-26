@@ -61,7 +61,7 @@ impl Parse for RpcOptions {
                         // can't be anything else
                         (other, _) => {
                             return Err(syn::Error::new_spanned(
-                                &other,
+                                other,
                                 "expected name-value pair or flag",
                             ));
                         }
@@ -70,7 +70,7 @@ impl Parse for RpcOptions {
                 // can't be anything else
                 other => {
                     return Err(syn::Error::new_spanned(
-                        &other,
+                        other,
                         "expected name-value pair or flag",
                     ));
                 }
@@ -139,7 +139,7 @@ impl ParsedRpcOptions {
             }
         }
     }
-    pub fn to_config_tokens(self) -> TokenStream {
+    pub fn into_config_tokens(self) -> TokenStream {
         let Self {
             service_name,
             service_description,
@@ -165,7 +165,7 @@ impl ParsedRpcOptions {
         }
     }
     pub fn impl_nats_rpc_service_trait(self, ident: Ident) -> TokenStream {
-        let config = self.to_config_tokens();
+        let config = self.into_config_tokens();
         quote! {
             #[async_trait::async_trait]
             impl ame_bus::service_rpc::NatsRpcService for #ident {

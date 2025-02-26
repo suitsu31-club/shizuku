@@ -226,7 +226,7 @@ impl Parse for JetStreamConsumerOptions {
                 Meta::Path(path) => {
                     let ident = path
                         .get_ident()
-                        .ok_or(syn::Error::new_spanned(&path, "expected identifier"))?;
+                        .ok_or(syn::Error::new_spanned(path, "expected identifier"))?;
                     let ident_str = ident.to_string();
                     match ident_str.as_str() {
                         // #[jetstream_consumer(push)]
@@ -252,7 +252,7 @@ impl Parse for JetStreamConsumerOptions {
                         // unknown attribute
                         other => {
                             return Err(syn::Error::new_spanned(
-                                &other,
+                                other,
                                 "expected name-value pair or flag",
                             ));
                         }
@@ -262,7 +262,7 @@ impl Parse for JetStreamConsumerOptions {
                 // can't be anything else
                 other => {
                     return Err(syn::Error::new_spanned(
-                        &other,
+                        other,
                         "expected name-value pair or flag",
                     ));
                 }
@@ -458,7 +458,6 @@ impl ParsedJetStreamConsumerConfig {
                 ..Default::default()
             }
         }
-        .into()
     }
     pub fn implement(self, ident: Ident) -> proc_macro2::TokenStream {
         let consumer_config_ident = match &self.consumer_type {
@@ -484,7 +483,7 @@ impl ParsedJetStreamConsumerConfig {
                     Ok(consumer)
                 }
             }
-        }.into()
+        }
     }
 }
 

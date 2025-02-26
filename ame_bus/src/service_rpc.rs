@@ -1,4 +1,4 @@
-use crate::message::{NatsCoreMessageSendTrait, StaticSubjectNatsMessage};
+use crate::message::{DynamicSubjectNatsMessage, NatsCoreMessageSendTrait, StaticSubjectNatsMessage};
 use crate::NatsMessage;
 
 #[doc(hidden)]
@@ -49,13 +49,44 @@ pub trait NatsRpcRequestMeta {
     type Service: NatsRpcService;
 }
 
+#[async_trait::async_trait]
+/// # NATS RPC Call
+/// 
+/// Call the RPC endpoint.
+pub trait NatsRpcCallTrait: NatsRpcRequest + StaticSubjectNatsMessage {
+    /// Call the RPC endpoint.
+    /// 
+    /// If the response is `()` or other void type, use `call_void` instead.
+    async fn call(self, nats: &async_nats::Client) -> anyhow::Result<Self::Response> {
+        let subject = self.subject();
+        let req_bytes = self.to_bytes()?;
+        let res = nats.request(subject, req_bytes.to_vec().into()).await?;
+        let res = Self::Response::parse_from_bytes(res.payload)?;
+        Ok(res)
+    }
+    
+    /// Call the RPC endpoint without response.
+    async fn call_void(self, nats: &async_nats::Client) -> anyhow::Result<()> {
+        let subject = self.subject();
+        let req_bytes = self.to_bytes()?;
+        nats.publish(subject, req_bytes.to_vec().into()).await?;
+        Ok(())
+    }
+}
+
+impl<T> NatsRpcCallTrait for T
+where
+    T: NatsRpcRequest + StaticSubjectNatsMessage,
+{
+}
+
 impl<T> StaticSubjectNatsMessage for T
 where
     T: NatsRpcRequestMeta + NatsMessage,
     T::Service: NatsRpcServiceMeta,
 {
     fn subject() -> String {
-        format!("service.{}.{}", T::Service::SERVICE_NAME, T::ENDPOINT_NAME)
+        format!("$SRV.{}.{}", T::Service::SERVICE_NAME, T::ENDPOINT_NAME)
     }
 }
 

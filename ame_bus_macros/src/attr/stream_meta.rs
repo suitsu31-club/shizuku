@@ -81,7 +81,7 @@ impl Parse for JetStreamMetaOptions {
                 Meta::Path(path) => {
                     let ident = path
                         .get_ident()
-                        .ok_or(syn::Error::new_spanned(&path, "expected identifier"))?;
+                        .ok_or(syn::Error::new_spanned(path, "expected identifier"))?;
                     let ident_str = ident.to_string();
                     match ident_str.as_str() {
                         // #[jetstream(no_ack)]
@@ -164,7 +164,6 @@ impl JetStreamMetaOptions {
                 }
             }
         }
-        .into()
     }
 }
 

@@ -298,7 +298,7 @@ pub fn rpc_route_impl(
                 .into()
         }
     };
-    let variants: Vec<_> = variants.iter().map(|v| v.clone()).collect();
+    let variants: Vec<_> = variants.iter().cloned().collect();
     let mut variants_args: Vec<RpcEndpointArgs> = Vec::new();
     for variant in variants.iter() {
         let args: TokenStream = variant
