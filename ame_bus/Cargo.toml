@@ -19,7 +19,7 @@ serde_json = { workspace = true }
 tracing = { workspace = true }
 futures = { workspace = true }
 async-nats = { workspace = true }
-ame_bus_macros = "0.2.1"
+ame_bus_macros = "0.2.2"
 num_cpus = "1.16.0"
 
 [features]
