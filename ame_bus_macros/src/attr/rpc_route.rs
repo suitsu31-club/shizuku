@@ -162,11 +162,17 @@ impl RouteTableEnumInfo {
             .collect()
     }
     pub fn streaming_endpoints(&self) -> Vec<TokenStream> {
+        let service_name = self.service.clone();
         self.routes
             .iter()
             .map(|(_, RpcEndpointArgs { request })| {
                 quote! {
-                    service.endpoint(#request::ENDPOINT_NAME)
+                    format!("{}.{}", #service_name::SERVICE_NAME, #request::ENDPOINT_NAME)
+                }
+            })
+            .map(|subject| {
+                quote! {
+                    service.endpoint(#subject)
                         .await
                         .expect("Failed to create endpoint")
                 }

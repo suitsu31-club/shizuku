@@ -86,7 +86,7 @@ where
     T::Service: NatsRpcServiceMeta,
 {
     fn subject() -> String {
-        format!("$SRV.{}.{}", T::Service::SERVICE_NAME, T::ENDPOINT_NAME)
+        format!("{}.{}", T::Service::SERVICE_NAME, T::ENDPOINT_NAME)
     }
 }
 

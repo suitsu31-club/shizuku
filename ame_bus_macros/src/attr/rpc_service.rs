@@ -81,6 +81,15 @@ impl Parse for RpcOptions {
         if result.name.is_none() {
             return Err(syn::Error::new(input.span(), "Expected `name` attribute"));
         }
+        let name_regex = regex::Regex::new(r"^[A-Za-z0-9_-]+$").unwrap();
+        if let Some(ref name) = result.name {
+            if !name_regex.is_match(name) {
+                return Err(syn::Error::new(
+                    input.span(),
+                    "service name is not a valid string (only A-Z, a-z, 0-9, _, - are allowed)",
+                ));
+            }
+        }
 
         Ok(result)
     }
