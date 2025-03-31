@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use crate::message::ByteDeserialize;
+use crate::ByteDeserialize;
 
 #[async_trait::async_trait]
 /// # NATS JetStream Meta

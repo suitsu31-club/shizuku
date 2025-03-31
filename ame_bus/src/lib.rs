@@ -2,14 +2,16 @@
 #![warn(missing_docs)]
 #![doc = include_str!("../README.md")]
 
+/// Core of Ame Bus.
+/// 
+/// This part defines the general traits and utilities.
+pub mod core;
+
 /// [JetStream](https://docs.nats.io/nats-concepts/jetstream) support.
 pub mod jetstream;
 
 /// [Key/Value Store](https://docs.nats.io/nats-concepts/jetstream/key-value-store) support.
 pub mod kv;
-
-/// Define the message struct using inside `ame-bus`.
-pub mod message;
 
 /// Tokio concurrency utilities.
 pub mod pool;
@@ -17,13 +19,11 @@ pub mod pool;
 /// Service RPC support. Using just NATS core features.
 pub mod service_rpc;
 
-/// Internal error types.
-pub mod error;
-
 #[cfg(test)]
 mod tests;
 
-pub use message::*;
+pub use core::message::*;
+pub use core::error;
 
 /// # Specify the JetStream using of the struct.
 /// Usually used for a consumer or message in JetStream.

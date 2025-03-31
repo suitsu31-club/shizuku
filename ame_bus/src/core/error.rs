@@ -15,7 +15,7 @@ impl std::error::Error for SerializeError {}
 // ---------------------------------------------
 
 #[derive(Debug)]
-/// Error when publishing message.
+/// Error after business login
 pub enum PostProcessError {
     /// Error when serializing message.
     SerializeError(SerializeError),
@@ -86,6 +86,58 @@ impl PreProcessError {
 
 // ---------------------------------------------
 
+#[derive(Debug)]
+/// All possible errors in ame-bus
+pub enum Error {
+    /// Error before business logic.
+    PreProcessError(PreProcessError),
+    
+    /// Error in business logic. 
+    /// 
+    /// Have [3](crate::core::processor::RetryLayer::BUSINESS_MAX_RETRY) retry times.
+    BusinessError(anyhow::Error),
+    
+    /// Error in business logic. 
+    /// 
+    /// This means the retry times has reached the maximum.
+    BusinessRetryReached(Box<[anyhow::Error]>),
+    
+    /// Error in business logic. 
+    /// 
+    /// This means there are bugs or unexpected errors.
+    /// 
+    /// Won't retry.
+    BusinessPanicError(anyhow::Error),
+    
+    /// Error after business logic.
+    PostProcessError(PostProcessError),
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Error::PreProcessError(err) => write!(f, "Failed to preprocess message:\n {}", err),
+            Error::BusinessError(err) => write!(f, "Failed to process message:\n {}", err),
+            Error::BusinessRetryReached(err) => {
+                write!(f, "Failed to process message after retry:\n {:?}", err)
+            },
+            Error::BusinessPanicError(err) => write!(f, "Business logic panic error:\n {}", err),
+            Error::PostProcessError(err) => write!(f, "Failed to postprocess message:\n {}", err),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
+
+impl Error {
+    /// Create a new [Error] from any type that can be converted to [Error].
+    pub fn new<T: Into<Self>>(err: T) -> Self {
+        err.into()
+    }
+}
+
+// ---------------------------------------------
+
 mod auto_implement {
     use crate::error::{DeserializeError, PostProcessError, PreProcessError, SerializeError};
 
@@ -110,6 +162,18 @@ mod auto_implement {
     impl From<DeserializeError> for PreProcessError {
         fn from(err: DeserializeError) -> Self {
             PreProcessError::DeserializeError(err)
+        }
+    }
+    
+    impl From<PostProcessError> for super::Error {
+        fn from(err: PostProcessError) -> Self {
+            super::Error::PostProcessError(err)
+        }
+    }
+    
+    impl From<PreProcessError> for super::Error {
+        fn from(err: PreProcessError) -> Self {
+            super::Error::PreProcessError(err)
         }
     }
 

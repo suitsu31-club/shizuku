@@ -1,6 +1,6 @@
 use async_nats::jetstream::kv;
 use std::marker::PhantomData;
-use crate::message::{ByteDeserialize, ByteSerialize};
+use crate::{ByteDeserialize, ByteSerialize};
 
 #[async_trait::async_trait]
 /// A Value that can be stored in the NATS JetStream Key/Value Store.

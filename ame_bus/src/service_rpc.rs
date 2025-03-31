@@ -1,6 +1,17 @@
-use std::sync::Arc;
-use crate::{ByteDeserialize, ByteSerialize};
-use crate::message::{DynamicSubjectNatsMessage, NatsCoreMessageSendTrait, StaticSubjectNatsMessage};
+use compact_str::CompactString;
+use crate::{ByteDeserialize, ByteSerialize, NatsSubjectPath};
+use crate::{DynamicSubjectNatsMessage, NatsCoreMessageSendTrait, StaticSubjectNatsMessage};
+use crate::core::FinalNatsProcessor;
+
+pub struct NatsService<F: FinalNatsProcessor> {
+    processor: F,
+    service: async_nats::service::Service,
+    tokio_runner: tokio::task::JoinHandle<()>,
+}
+
+impl<F: FinalNatsProcessor> NatsService<F> {
+
+}
 
 #[doc(hidden)]
 pub trait NatsRpcServiceMeta {
@@ -86,8 +97,14 @@ where
     T: NatsRpcRequestMeta,
     T::Service: NatsRpcServiceMeta,
 {
-    fn subject() -> String {
-        format!("{}.{}", T::Service::SERVICE_NAME, T::ENDPOINT_NAME)
+    fn subject() -> NatsSubjectPath {
+        let endpoint_name_split = T::ENDPOINT_NAME.split('.');
+        let first = T::Service::SERVICE_NAME;
+        let result = std::iter::once(first)
+            .chain(endpoint_name_split)
+            .map(|s| CompactString::new(s))
+            .collect::<Box<[_]>>();
+        NatsSubjectPath(result)
     }
 }
 
