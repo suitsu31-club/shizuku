@@ -8,14 +8,14 @@ use crate::service_rpc::NatsRpcRequestMeta;
 static NATS_CONNECTION: OnceCell<async_nats::Client> = OnceCell::const_new();
 
 #[rpc_service(
-    name = "user.info",
+    name = "user_info",
     version = "0.1.0"
 )]
 pub struct UserInfoService {
     // fields, like database connection
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, NatsJsonMessage)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct UserAvatarReq {
     user_id: String,
 }
@@ -34,7 +34,7 @@ impl NatsRpcRequest for UserAvatarReq {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, NatsJsonMessage)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct UserMetaReq {
     user_id: String,
 }

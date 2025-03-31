@@ -14,15 +14,18 @@ features = ["full"]
 tokio = { workspace = true}
 async-trait = { workspace = true }
 anyhow = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+prost = {workspace = true, optional = true}
+prost-types = {workspace = true, optional = true}
 tracing = { workspace = true }
 futures = { workspace = true }
 async-nats = { workspace = true }
+smallvec = {workspace = true}
+compact_str = {workspace = true}
 ame_bus_macros = "0.2.2"
 num_cpus = "1.16.0"
 
 [features]
-jetstream = []
-service = []
-full = ["jetstream", "service"]
+json = ["serde_json", "serde"]
+protobuf = ["prost", "prost-types"]

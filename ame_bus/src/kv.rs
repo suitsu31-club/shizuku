@@ -1,10 +1,10 @@
-use crate::NatsMessage;
 use async_nats::jetstream::kv;
 use std::marker::PhantomData;
+use crate::message::{ByteDeserialize, ByteSerialize};
 
 #[async_trait::async_trait]
 /// A Value that can be stored in the NATS JetStream Key/Value Store.
-pub trait NatsKvValue: NatsMessage + Sync + Send {
+pub trait NatsKvValue: ByteDeserialize + ByteSerialize + Sync + Send {
     /// The key type for the value. Usually `String` or `&'static str`.
     ///
     /// The key type must implement `Into<String>` if the key is dynamic.
@@ -70,7 +70,7 @@ pub trait NatsKvValue: NatsMessage + Sync + Send {
 /// A Key/Value pair for the NATS JetStream Key/Value Store.
 ///
 /// The key must be static.
-pub trait NatsStaticKeyKvValue: NatsMessage + Sync + Send {
+pub trait NatsStaticKeyKvValue: Sync + Send {
     /// The key of kv pair
     const KEY: &'static str;
 
@@ -79,7 +79,7 @@ pub trait NatsStaticKeyKvValue: NatsMessage + Sync + Send {
 }
 
 impl<T> NatsKvValue for T
-    where T: NatsStaticKeyKvValue
+    where T: NatsStaticKeyKvValue + ByteDeserialize + ByteSerialize
 {
     type Key = &'static str;
     const BUCKET: &'static str = <Self as NatsStaticKeyKvValue>::BUCKET;

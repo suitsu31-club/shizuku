@@ -2,11 +2,9 @@
 #![warn(missing_docs)]
 #![doc = include_str!("../README.md")]
 
-#[cfg(feature = "jetstream")]
 /// [JetStream](https://docs.nats.io/nats-concepts/jetstream) support.
 pub mod jetstream;
 
-#[cfg(feature = "jetstream")]
 /// [Key/Value Store](https://docs.nats.io/nats-concepts/jetstream/key-value-store) support.
 pub mod kv;
 
@@ -16,14 +14,16 @@ pub mod message;
 /// Tokio concurrency utilities.
 pub mod pool;
 
-#[cfg(feature = "service")]
 /// Service RPC support. Using just NATS core features.
 pub mod service_rpc;
+
+/// Internal error types.
+pub mod error;
 
 #[cfg(test)]
 mod tests;
 
-pub use message::{NatsJsonMessage, NatsMessage};
+pub use message::*;
 
 /// # Specify the JetStream using of the struct.
 /// Usually used for a consumer or message in JetStream.
@@ -52,7 +52,6 @@ pub use message::{NatsJsonMessage, NatsMessage};
 ///
 /// Attention that these options only work if the stream is not created yet and the stream
 /// is created with these options.
-#[cfg(feature = "jetstream")]
 pub use ame_bus_macros::jet;
 
 /// # Configure the JetStream consumer.
@@ -108,7 +107,6 @@ pub use ame_bus_macros::jet;
 ///     email_template: String,
 /// }
 /// ```
-#[cfg(feature = "jetstream")]
 pub use ame_bus_macros::jet_consumer;
 
 /// Implement [NatsJsonMessage](crate::message::NatsJsonMessage) trait if it has already
@@ -134,7 +132,7 @@ pub use ame_bus_macros::NatsJsonMessage;
 /// ```rust
 /// # use ame_bus_macros::rpc_service;
 /// #[rpc_service(
-///     name = "user.info",
+///     name = "user_info",
 ///     version = "0.1.0",
 /// )]
 /// pub struct UserInfoService {
@@ -150,7 +148,6 @@ pub use ame_bus_macros::NatsJsonMessage;
 /// - `queue_group="foo"`: Queue group name.
 /// 
 /// Usually, you need to set the `queue_group` to make the service scaled properly.
-#[cfg(feature = "service")]
 pub use ame_bus_macros::rpc_service;
 
 /// # RPC Route Register
@@ -187,7 +184,7 @@ pub use ame_bus_macros::rpc_service;
 /// static NATS_CONNECTION: OnceCell<async_nats::Client> = OnceCell::const_new();
 /// 
 /// #[rpc_service(
-///     name = "user.info",
+///     name = "user_info",
 ///     version = "0.1.0",
 /// )]
 /// pub struct UserInfoService {
@@ -239,7 +236,6 @@ pub use ame_bus_macros::rpc_service;
 ///     UserMeta,
 /// }
 /// ```
-#[cfg(feature = "service")]
 pub use ame_bus_macros::rpc_route;
 
 /// Implement [NatsCoreMessageSendTrait](crate::message::NatsCoreMessageSendTrait) for the struct.
@@ -248,7 +244,6 @@ pub use ame_bus_macros::rpc_route;
 /// [DynamicSubjectNatsMessage](crate::message::DynamicSubjectNatsMessage) first.
 pub use ame_bus_macros::DeriveCoreMessageSend;
 
-#[cfg(feature = "jetstream")]
 /// Implement [JetStreamMessageSendTrait](crate::message::JetStreamMessageSendTrait) for the struct.
 /// 
 /// Must implement [NatsMessage](crate::message::NatsMessage) and 

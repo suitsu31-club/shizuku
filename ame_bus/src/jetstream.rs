@@ -1,5 +1,5 @@
-use crate::NatsMessage;
 use std::sync::Arc;
+use crate::message::ByteDeserialize;
 
 #[async_trait::async_trait]
 /// # NATS JetStream Meta
@@ -61,25 +61,20 @@ pub trait NatsJetStreamConsumerMeta: Send + Sync + NatsJetStreamMeta {
 /// ## Example
 ///
 /// ```rust
-/// # #[cfg(feature = "jetstream")]
 /// # use ame_bus::jetstream::SubscribeJetStreamEvent;
-/// # #[cfg(feature = "jetstream")]
 /// # use ame_bus_macros::{jetstream, jetstream_consumer, NatsJsonMessage};
-/// # #[cfg(feature = "jetstream")]
 /// #[jetstream(name = "user")]
 /// #[jetstream_consumer(durable)]
 /// struct UserSuccessfulRegisteredConsumer {
 ///     database_connection: (),    // use `()` for example, should be a real connection
 /// }
 ///
-/// # #[cfg(feature = "jetstream")]
 /// #[derive(serde::Serialize, serde::Deserialize, NatsJsonMessage)]
 /// struct UserSuccessfulRegistered {
 ///     user_id: String,
 ///     email: String,
 /// }
 ///
-/// # #[cfg(feature = "jetstream")]
 /// #[async_trait::async_trait]
 /// impl SubscribeJetStreamEvent for UserSuccessfulRegistered {
 ///     type EventConsumer = UserSuccessfulRegisteredConsumer;
@@ -89,7 +84,7 @@ pub trait NatsJetStreamConsumerMeta: Send + Sync + NatsJetStreamMeta {
 ///     }
 /// }
 /// ```
-pub trait SubscribeJetStreamEvent: NatsMessage {
+pub trait SubscribeJetStreamEvent: ByteDeserialize {
     /// The stateful consumer.
     ///
     /// The consumer should have everything needed to process the event.

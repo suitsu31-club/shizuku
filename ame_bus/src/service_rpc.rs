@@ -1,5 +1,6 @@
+use std::sync::Arc;
+use crate::{ByteDeserialize, ByteSerialize};
 use crate::message::{DynamicSubjectNatsMessage, NatsCoreMessageSendTrait, StaticSubjectNatsMessage};
-use crate::NatsMessage;
 
 #[doc(hidden)]
 pub trait NatsRpcServiceMeta {
@@ -25,9 +26,9 @@ pub trait NatsRpcService: Send + Sync {
 /// # NATS RPC Endpoint
 ///
 /// Implement this trait to process the request of the endpoint.
-pub trait NatsRpcRequest: NatsMessage + NatsRpcRequestMeta {
+pub trait NatsRpcRequest: ByteDeserialize + NatsRpcRequestMeta {
     /// Response type of the endpoint.
-    type Response: NatsMessage;
+    type Response: ByteDeserialize;
 
     /// Business logic of the endpoint.
     async fn process_request(
@@ -53,7 +54,7 @@ pub trait NatsRpcRequestMeta {
 /// # NATS RPC Call
 /// 
 /// Call the RPC endpoint.
-pub trait NatsRpcCallTrait: NatsRpcRequest + StaticSubjectNatsMessage {
+pub trait NatsRpcCallTrait: NatsRpcRequest + StaticSubjectNatsMessage + ByteSerialize {
     /// Call the RPC endpoint.
     /// 
     /// If the response is `()` or other void type, use `call_void` instead.
@@ -76,13 +77,13 @@ pub trait NatsRpcCallTrait: NatsRpcRequest + StaticSubjectNatsMessage {
 
 impl<T> NatsRpcCallTrait for T
 where
-    T: NatsRpcRequest + StaticSubjectNatsMessage,
+    T: NatsRpcRequest + StaticSubjectNatsMessage + ByteSerialize,
 {
 }
 
 impl<T> StaticSubjectNatsMessage for T
 where
-    T: NatsRpcRequestMeta + NatsMessage,
+    T: NatsRpcRequestMeta,
     T::Service: NatsRpcServiceMeta,
 {
     fn subject() -> String {
@@ -92,7 +93,7 @@ where
 
 impl<T> NatsCoreMessageSendTrait for T
 where
-    T: NatsRpcRequestMeta + NatsMessage,
+    T: NatsRpcRequestMeta + ByteSerialize,
     T::Service: NatsRpcServiceMeta,
 {
 }
