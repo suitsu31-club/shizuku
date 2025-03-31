@@ -2,32 +2,40 @@ use crate::error::Error;
 use std::sync::Arc;
 
 /// A closure-like trait for processing input and returning output.
+///
+/// It cannot be the final layer or there will be a lifetime issue, because the future can live
+/// longer than the processor.
 pub trait Processor<I, O>: Sized {
     #[allow(missing_docs)]
     fn process<'p>(&'p self, input: I) -> impl Future<Output = O> + Send + 'p;
 }
 
-/// The outermost layer of a NATS service.
-pub trait FinalNatsProcessor: Sized {
-    /// receive the message from NATS and return the response.
-    fn process(
-        state: Arc<Self>,
-        input: async_nats::Message,
-    ) -> impl Future<Output = Result<async_nats::Message, Error>> + Send;
+/// The outermost layer of a processor.
+pub trait FinalProcessor<I, O>: Sized {
+    #[allow(missing_docs)]
+    fn process(state: Arc<Self>, input: I) -> impl Future<Output = O> + Send;
 }
 
 /// The outermost layer of a NATS JetStream consumer.
-pub trait FinalJetStreamProcessor: Sized {
-    /// receive the message from NATS JetStream and return the response.
-    fn process(
-        state: Arc<Self>,
-        input: async_nats::jetstream::message::Message,
-    ) -> impl Future<Output = Result<(), Error>> + Send;
+pub trait FinalJetStreamProcessor:
+    FinalProcessor<async_nats::jetstream::message::Message, Result<(), Error>>
+{
 }
 
 /// A kind of error handler, but it can only be used for tracing the error or any
 /// other thing that doesn't affect the Ok result.
 pub trait ErrorTracer: Processor<Result<(), Error>, ()> {}
+
+/// An empty error tracer.
+pub struct EmptyErrorTracer;
+
+impl Processor<Result<(), Error>, ()> for EmptyErrorTracer {
+    fn process<'p>(&'p self, _: Result<(), Error>) -> impl Future<Output=()> + Send + 'p {
+        async {}
+    }
+}
+
+impl ErrorTracer for EmptyErrorTracer {}
 
 /// A wrapper around a [Processor]. Can do something before and after the future execution.
 pub trait Layer<I, O, P: Processor<I, O>> {
@@ -43,11 +51,16 @@ pub trait Layer<I, O, P: Processor<I, O>> {
 }
 
 /// A layer that retries the processor if it returns an error.
-pub struct RetryLayer;
+pub struct RetryLayer {
+    /// The maximum number of retries.
+    pub max_retry: usize,
+}
 
 impl RetryLayer {
-    /// The maximum number of retries for business logic.
-    pub const BUSINESS_MAX_RETRY: usize = 3;
+    /// Create a new [RetryLayer].
+    pub fn new(max_retry: usize) -> Self {
+        Self { max_retry }
+    }
 }
 
 impl<Input, Success, P> Layer<Input, Result<Success, Error>, P> for RetryLayer
@@ -64,9 +77,10 @@ where
         Input: 'w + 'p,
         'p: 'w,
     {
+        let max_retry = self.max_retry;
         async move {
             let mut error: Vec<anyhow::Error> = Vec::new();
-            for _ in 0..Self::BUSINESS_MAX_RETRY {
+            for _ in 0..max_retry {
                 match processor.process(input.clone()).await {
                     Ok(res) => return Ok(res),
                     Err(Error::BusinessError(err)) => error.push(err),

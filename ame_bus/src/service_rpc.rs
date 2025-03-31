@@ -1,116 +1,91 @@
-use compact_str::CompactString;
-use crate::{ByteDeserialize, ByteSerialize, NatsSubjectPath};
-use crate::{DynamicSubjectNatsMessage, NatsCoreMessageSendTrait, StaticSubjectNatsMessage};
-use crate::core::FinalNatsProcessor;
+use crate::core::{ErrorTracer, FinalProcessor, Processor};
+use crate::error::{Error, PostProcessError};
+use async_nats::service::Request;
+use async_nats::{Message, Subject};
+use bytes::Bytes;
+use futures::{Stream, StreamExt};
+use std::sync::Arc;
 
-pub struct NatsService<F: FinalNatsProcessor> {
+/// The outermost layer of a NATS service.
+pub trait FinalNatsProcessor:
+    FinalProcessor<Message, Result<Bytes, Error>>
+{
+}
+
+#[derive(Debug, Clone)]
+/// The processor used to reply the request. Will only be used in [NatsService].
+struct NatsReplyProcessor {
+    nats_connection: &'static async_nats::Client,
+}
+
+impl Processor<(Option<Subject>, Bytes), Result<(), Error>> for NatsReplyProcessor {
+    fn process<'p>(&'p self, input: (Option<Subject>, Bytes)) -> impl Future<Output=Result<(), Error>> + Send + 'p {
+        async move {
+            let Some(reply_subject) = input.0 else {
+                return Err(Error::PostProcessError(PostProcessError::UnexpectedNullReplySubject))
+            };
+            self.nats_connection.publish(reply_subject, input.1).await
+                .map_err(|err| Error::PostProcessError(PostProcessError::NatsMessagePushError(err)))?;
+            Ok(())
+        }
+    }
+}
+
+/// The Service instance
+pub struct NatsService<F, St, Et> 
+    where 
+        F: FinalNatsProcessor,
+        St: Stream<Item = Request> + Unpin,
+        Et: ErrorTracer,
+{
     processor: F,
-    service: async_nats::service::Service,
-    tokio_runner: tokio::task::JoinHandle<()>,
+    stream: St,
+    reply_processor: NatsReplyProcessor,
+    error_tracer: Et,
 }
 
-impl<F: FinalNatsProcessor> NatsService<F> {
-
-}
-
-#[doc(hidden)]
-pub trait NatsRpcServiceMeta {
-    const SERVICE_NAME: &'static str;
-    const SERVICE_VERSION: &'static str;
-    const SERVICE_DESCRIPTION: Option<&'static str> = None;
-    const QUEUE_GROUP: Option<&'static str> = None;
-}
-
-#[doc(hidden)]
-#[async_trait::async_trait]
-/// # NATS RPC Service
-///
-/// RPC service's state. Should have everything needed to process the request of all endpoints.
-pub trait NatsRpcService: Send + Sync {
-    /// Set up the [async_nats::service::Service].
-    async fn set_up_service(
-        nats: &async_nats::Client,
-    ) -> Result<async_nats::service::Service, async_nats::Error>;
-}
-
-#[async_trait::async_trait]
-/// # NATS RPC Endpoint
-///
-/// Implement this trait to process the request of the endpoint.
-pub trait NatsRpcRequest: ByteDeserialize + NatsRpcRequestMeta {
-    /// Response type of the endpoint.
-    type Response: ByteDeserialize;
-
-    /// Business logic of the endpoint.
-    async fn process_request(
-        service_state: &Self::Service,
-        request: Self,
-    ) -> anyhow::Result<Self::Response>;
-}
-
-/// # NATS RPC Endpoint
-///
-/// Meta trait for the endpoint.
-///
-/// If you don't have a good reason, you should always use macro to implement this trait.
-pub trait NatsRpcRequestMeta {
-    /// Name of the endpoint.
-    const ENDPOINT_NAME: &'static str;
-
-    /// Service which the endpoint belongs to.
-    type Service: NatsRpcService;
-}
-
-#[async_trait::async_trait]
-/// # NATS RPC Call
-/// 
-/// Call the RPC endpoint.
-pub trait NatsRpcCallTrait: NatsRpcRequest + StaticSubjectNatsMessage + ByteSerialize {
-    /// Call the RPC endpoint.
+impl<F, St, Et> NatsService<F, St, Et>
+    where 
+        F: FinalNatsProcessor,
+        St: Stream<Item = Request> + Unpin,
+        Et: ErrorTracer,
+{
+    /// Create a new [NatsService].
     /// 
-    /// If the response is `()` or other void type, use `call_void` instead.
-    async fn call(self, nats: &async_nats::Client) -> anyhow::Result<Self::Response> {
-        let subject = self.subject();
-        let req_bytes = self.to_bytes()?;
-        let res = nats.request(subject, req_bytes.to_vec().into()).await?;
-        let res = Self::Response::parse_from_bytes(res.payload)?;
-        Ok(res)
+    /// parameters:
+    /// 
+    /// 1. `processor`: The processor function, must implement [FinalNatsProcessor] trait.
+    /// 2. `stream`: The stream of requests.
+    /// 3. `nats_connection`: The NATS connection, must be `&'static async_nats::Client`.
+    /// 4. `error_tracer`: The error tracer, must implement [ErrorTracer] trait. If you
+    ///     don't want to trace the error, use [EmptyErrorTracer](crate::core::EmptyErrorTracer)
+    pub fn new(
+        processor: F,
+        stream: St,
+        nats_connection: &'static async_nats::Client,
+        error_tracer: Et,
+    ) -> Self {
+        Self {
+            processor,
+            stream,
+            reply_processor: NatsReplyProcessor { nats_connection },
+            error_tracer,
+        }
     }
-    
-    /// Call the RPC endpoint without response.
-    async fn call_void(self, nats: &async_nats::Client) -> anyhow::Result<()> {
-        let subject = self.subject();
-        let req_bytes = self.to_bytes()?;
-        nats.publish(subject, req_bytes.to_vec().into()).await?;
-        Ok(())
+    /// Run the service.
+    pub async fn run(self) {
+        let processor = Arc::new(self.processor);
+        let reply_processor = Arc::new(self.reply_processor);
+        let error_tracer = Arc::new(self.error_tracer);
+        let mut stream = self.stream;
+        while let Some(req) = stream.next().await {
+            let reply = req.message.reply.clone();
+            let processed = F::process(processor.clone(), req.message).await;
+            let sent = match processed {
+                Ok(bytes) => reply_processor.process((reply, bytes)).await,
+                Err(err) => Err(err),
+            };
+            error_tracer.process(sent).await;
+        }
     }
-}
-
-impl<T> NatsRpcCallTrait for T
-where
-    T: NatsRpcRequest + StaticSubjectNatsMessage + ByteSerialize,
-{
-}
-
-impl<T> StaticSubjectNatsMessage for T
-where
-    T: NatsRpcRequestMeta,
-    T::Service: NatsRpcServiceMeta,
-{
-    fn subject() -> NatsSubjectPath {
-        let endpoint_name_split = T::ENDPOINT_NAME.split('.');
-        let first = T::Service::SERVICE_NAME;
-        let result = std::iter::once(first)
-            .chain(endpoint_name_split)
-            .map(|s| CompactString::new(s))
-            .collect::<Box<[_]>>();
-        NatsSubjectPath(result)
-    }
-}
-
-impl<T> NatsCoreMessageSendTrait for T
-where
-    T: NatsRpcRequestMeta + ByteSerialize,
-    T::Service: NatsRpcServiceMeta,
-{
 }

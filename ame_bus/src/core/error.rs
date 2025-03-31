@@ -21,6 +21,8 @@ pub enum PostProcessError {
     SerializeError(SerializeError),
     /// Error when publishing message into NATS core.
     NatsMessagePushError(async_nats::PublishError),
+    /// When trying to reply the request, find the `reply` is `None`.
+    UnexpectedNullReplySubject,
     /// Error when publishing message into NATS JetStream.
     JetStreamMessagePushError(async_nats::jetstream::context::PublishError),
 }
@@ -30,6 +32,7 @@ impl Display for PostProcessError {
         match self {
             PostProcessError::SerializeError(err) => write!(f, "Failed to serialize message:\n {}", err.0),
             PostProcessError::NatsMessagePushError(err) => write!(f, "Failed to publish message:\n {}", err),
+            PostProcessError::UnexpectedNullReplySubject => write!(f, "Unexpected null reply subject"),
             PostProcessError::JetStreamMessagePushError(err) => write!(f, "Failed to publish message:\n {}", err),
         }
     }
@@ -94,7 +97,7 @@ pub enum Error {
     
     /// Error in business logic. 
     /// 
-    /// Have [3](crate::core::processor::RetryLayer::BUSINESS_MAX_RETRY) retry times.
+    /// Retry time is controlled by [RetryLayer](crate::core::processor::RetryLayer).
     BusinessError(anyhow::Error),
     
     /// Error in business logic. 
