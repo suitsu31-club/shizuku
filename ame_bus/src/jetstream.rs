@@ -1,96 +1,97 @@
+use crate::core::{FinalProcessor, Processor};
+use crate::error::Error;
+use async_nats::jetstream::Message;
 use std::sync::Arc;
-use crate::ByteDeserialize;
+use futures::StreamExt;
 
-#[async_trait::async_trait]
-/// # NATS JetStream Meta
+/// The outermost layer of a NATS JetStream consumer.
 ///
-/// Specify the JetStream using of the struct. Usually used for a consumer or message in JetStream.
-///
-/// Usually implemented by [jetstream](macro@crate::jetstream) attribute.
-pub trait NatsJetStreamMeta: Send + Sync {
-    /// A name for the Stream. Must not have spaces, tabs or period . characters
-    const STREAM_NAME: &'static str;
+/// It implements [Processor] trait, not [FinalProcessor] trait.
+pub trait FinalJetStreamProcessor: Processor<async_nats::Message, Result<(), Error>> {}
 
-    /// Get or create the JetStream stream.
-    async fn get_or_create_stream(
-        &self,
-        js: &async_nats::jetstream::Context,
-    ) -> anyhow::Result<async_nats::jetstream::stream::Stream> {
-        let stream = js
-            .get_or_create_stream(async_nats::jetstream::stream::Config {
-                name: Self::STREAM_NAME.to_owned(),
-                max_messages: 100_000,
-                ..Default::default()
-            })
-            .await?;
-        Ok(stream)
+struct JetStreamAckProcessor<F>
+where
+    F: FinalJetStreamProcessor + Send + Sync,
+{
+    sub_processor: F,
+    nats_connection: &'static async_nats::Client,
+}
+
+impl<F> FinalProcessor<Message, Result<(), Error>> for JetStreamAckProcessor<F>
+where
+    F: FinalJetStreamProcessor + Send + Sync,
+{
+    fn process(state: Arc<Self>, input: Message) -> impl Future<Output = Result<(), Error>> + Send {
+        async move {
+            let Some(reply) = input.message.reply.clone() else {
+                return Err(Error::PreProcessError(
+                    crate::error::PreProcessError::UnexpectedNullReplySubject,
+                ));
+            };
+            let message = input.message;
+            let result = state.sub_processor.process(message).await;
+            if let Err(err) = result {
+                Err(err)
+            } else {
+                state
+                    .nats_connection
+                    .publish(reply, "".into())
+                    .await
+                    .map_err(|err| {
+                        Error::PostProcessError(
+                            crate::error::PostProcessError::NatsMessagePushError(err),
+                        )
+                    })?;
+                Ok(())
+            }
+        }
     }
 }
 
-#[async_trait::async_trait]
-/// # NATS JetStream Consumer Meta
-///
-/// Configure the JetStream consumer.
-///
-/// Must implement [NatsJetStreamMeta] trait first.
-///
-/// Usually implemented by [jetstream_consumer](crate::jetstream_consumer) attribute.
-pub trait NatsJetStreamConsumerMeta: Send + Sync + NatsJetStreamMeta {
-    /// Consumer configuration type.
-    ///
-    /// Usually is [jetstream::consumer::pull::Config](async_nats::jetstream::consumer::pull::Config)
-    /// or [jetstream::consumer::push::Config](async_nats::jetstream::consumer::push::Config).
-    type ConsumerConfig: async_nats::jetstream::consumer::IntoConsumerConfig;
-
-    /// Consumer name.
-    ///
-    /// If the consumer is durable, it will also be the durable name.
-    const CONSUMER_NAME: &'static str;
-
-    /// Get or create the JetStream consumer.
-    async fn get_or_create_consumer(
-        stream: async_nats::jetstream::stream::Stream,
-    ) -> anyhow::Result<async_nats::jetstream::consumer::Consumer<Self::ConsumerConfig>>;
+/// The NATS JetStream consumer instance
+pub struct JetStreamConsumer<F, Et>
+where
+    F: FinalJetStreamProcessor + Send + Sync,
+    Et: crate::core::ErrorTracer,
+{
+    processor: JetStreamAckProcessor<F>,
+    error_tracer: Et,
 }
 
-#[async_trait::async_trait]
-/// # Subscribed JetStream Event
-///
-/// Implement this trait to subscribe to JetStream events.
-///
-/// ## Example
-///
-/// ```rust
-/// # use ame_bus::jetstream::SubscribeJetStreamEvent;
-/// # use ame_bus_macros::{jetstream, jetstream_consumer, NatsJsonMessage};
-/// #[jetstream(name = "user")]
-/// #[jetstream_consumer(durable)]
-/// struct UserSuccessfulRegisteredConsumer {
-///     database_connection: (),    // use `()` for example, should be a real connection
-/// }
-///
-/// #[derive(serde::Serialize, serde::Deserialize, NatsJsonMessage)]
-/// struct UserSuccessfulRegistered {
-///     user_id: String,
-///     email: String,
-/// }
-///
-/// #[async_trait::async_trait]
-/// impl SubscribeJetStreamEvent for UserSuccessfulRegistered {
-///     type EventConsumer = UserSuccessfulRegisteredConsumer;
-///     async fn emit(consumer: std::sync::Arc<Self::EventConsumer>, event: Self) -> anyhow::Result<()> {
-///         // process the event
-///         Ok(())
-///     }
-/// }
-/// ```
-pub trait SubscribeJetStreamEvent: ByteDeserialize {
-    /// The stateful consumer.
-    ///
-    /// The consumer should have everything needed to process the event.
-    /// Like database connection, `async_nats::jetstream::Context`, etc.
-    type EventConsumer: NatsJetStreamConsumerMeta;
-
-    /// Emit the event.
-    async fn emit(consumer: Arc<Self::EventConsumer>, event: Self) -> anyhow::Result<()>;
+impl<F, Et> JetStreamConsumer<F, Et>
+where
+    F: FinalJetStreamProcessor + Send + Sync,
+    Et: crate::core::ErrorTracer,
+{
+    /// Create a new [JetStreamConsumer].
+    /// 
+    /// parameters:
+    /// 
+    /// 1. `processor`: The processor function, must implement [FinalJetStreamProcessor] trait.
+    /// 2. `nats_connection`: The NATS connection, must be `&'static async_nats::Client`.
+    /// 3. `error_tracer`: The error tracer, must implement [ErrorTracer] trait. If you
+    ///     don't want to trace the error, use [EmptyErrorTracer](crate::core::EmptyErrorTracer)
+    pub fn new(
+        processor: F,
+        nats_connection: &'static async_nats::Client,
+        error_tracer: Et,
+    ) -> Self {
+        Self {
+            processor: JetStreamAckProcessor {
+                sub_processor: processor,
+                nats_connection,
+            },
+            error_tracer,
+        }
+    }
+    
+    /// Run the consumer.
+    pub async fn run(self, mut stream: impl futures::Stream<Item = Message> + Unpin) {
+        let processor = Arc::new(self.processor);
+        let error_tracer = Arc::new(self.error_tracer);
+        while let Some(msg) = stream.next().await {
+            let processed = JetStreamAckProcessor::<F>::process(processor.clone(), msg).await;
+            Et::process(error_tracer.clone(), processed).await;
+        }
+    }
 }

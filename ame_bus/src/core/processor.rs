@@ -16,21 +16,15 @@ pub trait FinalProcessor<I, O>: Sized {
     fn process(state: Arc<Self>, input: I) -> impl Future<Output = O> + Send;
 }
 
-/// The outermost layer of a NATS JetStream consumer.
-pub trait FinalJetStreamProcessor:
-    FinalProcessor<async_nats::jetstream::message::Message, Result<(), Error>>
-{
-}
-
 /// A kind of error handler, but it can only be used for tracing the error or any
 /// other thing that doesn't affect the Ok result.
-pub trait ErrorTracer: Processor<Result<(), Error>, ()> {}
+pub trait ErrorTracer: FinalProcessor<Result<(), Error>, ()> {}
 
 /// An empty error tracer.
 pub struct EmptyErrorTracer;
 
-impl Processor<Result<(), Error>, ()> for EmptyErrorTracer {
-    fn process<'p>(&'p self, _: Result<(), Error>) -> impl Future<Output=()> + Send + 'p {
+impl FinalProcessor<Result<(), Error>, ()> for EmptyErrorTracer {
+    fn process(_: Arc<Self>, _: Result<(), Error>) -> impl Future<Output=()> + Send {
         async {}
     }
 }

@@ -68,12 +68,16 @@ impl std::error::Error for DeserializeError {}
 pub enum PreProcessError {
     /// Error when deserializing message.
     DeserializeError(DeserializeError),
+
+    /// For a JetStream message, the reply subject is null.
+    UnexpectedNullReplySubject
 }
 
 impl Display for PreProcessError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             PreProcessError::DeserializeError(err) => write!(f, "Failed to deserialize message:\n {}", err.0),
+            PreProcessError::UnexpectedNullReplySubject => write!(f, "Unexpected null reply subject"),
         }
     }
 }
@@ -114,6 +118,9 @@ pub enum Error {
     
     /// Error after business logic.
     PostProcessError(PostProcessError),
+    
+    /// Custom error.
+    Custom(anyhow::Error),
 }
 
 impl Display for Error {
@@ -126,6 +133,7 @@ impl Display for Error {
             },
             Error::BusinessPanicError(err) => write!(f, "Business logic panic error:\n {}", err),
             Error::PostProcessError(err) => write!(f, "Failed to postprocess message:\n {}", err),
+            Error::Custom(err) => write!(f, "Custom error:\n {}", err),
         }
     }
 }

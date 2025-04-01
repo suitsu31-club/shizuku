@@ -32,22 +32,19 @@ impl Processor<(Option<Subject>, Bytes), Result<(), Error>> for NatsReplyProcess
 }
 
 /// The Service instance
-pub struct NatsService<F, St, Et> 
+pub struct NatsService<F, Et> 
     where 
         F: FinalNatsProcessor,
-        St: Stream<Item = Request> + Unpin,
         Et: ErrorTracer,
 {
     processor: F,
-    stream: St,
     reply_processor: NatsReplyProcessor,
     error_tracer: Et,
 }
 
-impl<F, St, Et> NatsService<F, St, Et>
+impl<F, Et> NatsService<F, Et>
     where 
         F: FinalNatsProcessor,
-        St: Stream<Item = Request> + Unpin,
         Et: ErrorTracer,
 {
     /// Create a new [NatsService].
@@ -61,23 +58,20 @@ impl<F, St, Et> NatsService<F, St, Et>
     ///     don't want to trace the error, use [EmptyErrorTracer](crate::core::EmptyErrorTracer)
     pub fn new(
         processor: F,
-        stream: St,
         nats_connection: &'static async_nats::Client,
         error_tracer: Et,
     ) -> Self {
         Self {
             processor,
-            stream,
             reply_processor: NatsReplyProcessor { nats_connection },
             error_tracer,
         }
     }
     /// Run the service.
-    pub async fn run(self) {
+    pub async fn run(self, mut stream: impl Stream<Item = Request> + Unpin) {
         let processor = Arc::new(self.processor);
         let reply_processor = Arc::new(self.reply_processor);
         let error_tracer = Arc::new(self.error_tracer);
-        let mut stream = self.stream;
         while let Some(req) = stream.next().await {
             let reply = req.message.reply.clone();
             let processed = F::process(processor.clone(), req.message).await;
@@ -85,7 +79,7 @@ impl<F, St, Et> NatsService<F, St, Et>
                 Ok(bytes) => reply_processor.process((reply, bytes)).await,
                 Err(err) => Err(err),
             };
-            error_tracer.process(sent).await;
+            Et::process(error_tracer.clone(), sent).await;
         }
     }
 }

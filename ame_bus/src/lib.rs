@@ -13,9 +13,6 @@ pub mod jetstream;
 /// [Key/Value Store](https://docs.nats.io/nats-concepts/jetstream/key-value-store) support.
 pub mod kv;
 
-/// Tokio concurrency utilities.
-pub mod pool;
-
 /// Service RPC support. Using just NATS core features.
 pub mod service_rpc;
 
