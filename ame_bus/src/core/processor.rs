@@ -7,7 +7,7 @@ use std::sync::Arc;
 /// longer than the processor.
 pub trait Processor<I, O>: Sized {
     #[allow(missing_docs)]
-    fn process<'p>(&'p self, input: I) -> impl Future<Output = O> + Send + 'p;
+    fn process(&self, input: I) -> impl Future<Output = O> + Send + '_;
 }
 
 /// The outermost layer of a processor.
@@ -24,8 +24,7 @@ pub trait ErrorTracer: FinalProcessor<Result<(), Error>, ()> {}
 pub struct EmptyErrorTracer;
 
 impl FinalProcessor<Result<(), Error>, ()> for EmptyErrorTracer {
-    fn process(_: Arc<Self>, _: Result<(), Error>) -> impl Future<Output=()> + Send {
-        async {}
+    async fn process(_: Arc<Self>, _: Result<(), Error>) {
     }
 }
 

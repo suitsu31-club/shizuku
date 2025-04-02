@@ -48,7 +48,7 @@ pub trait JetStreamMessageSendTrait: ByteSerialize + DynamicSubjectMessage {
                 .publish(
                     self.subject(),
                     self.to_bytes()
-                        .map_err(|err| Into::<SerializeError>::into(err))?
+                        .map_err(Into::<SerializeError>::into)?
                         .to_vec()
                         .into(),
                 )
@@ -76,9 +76,9 @@ impl Display for NatsSubjectPath {
     }
 }
 
-impl Into<String> for NatsSubjectPath {
-    fn into(self) -> String {
-        self.0.join(".")
+impl From<NatsSubjectPath> for String {
+    fn from(val: NatsSubjectPath) -> Self {
+        val.0.join(".")
     }
 }
 

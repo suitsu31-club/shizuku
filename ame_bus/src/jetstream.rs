@@ -1,8 +1,8 @@
 use crate::core::{FinalProcessor, Processor};
 use crate::error::Error;
 use async_nats::jetstream::Message;
-use std::sync::Arc;
 use futures::StreamExt;
+use std::sync::Arc;
 
 /// The outermost layer of a NATS JetStream consumer.
 ///
@@ -21,29 +21,27 @@ impl<F> FinalProcessor<Message, Result<(), Error>> for JetStreamAckProcessor<F>
 where
     F: FinalJetStreamProcessor + Send + Sync,
 {
-    fn process(state: Arc<Self>, input: Message) -> impl Future<Output = Result<(), Error>> + Send {
-        async move {
-            let Some(reply) = input.message.reply.clone() else {
-                return Err(Error::PreProcessError(
-                    crate::error::PreProcessError::UnexpectedNullReplySubject,
-                ));
-            };
-            let message = input.message;
-            let result = state.sub_processor.process(message).await;
-            if let Err(err) = result {
-                Err(err)
-            } else {
-                state
-                    .nats_connection
-                    .publish(reply, "".into())
-                    .await
-                    .map_err(|err| {
-                        Error::PostProcessError(
-                            crate::error::PostProcessError::NatsMessagePushError(err),
-                        )
-                    })?;
-                Ok(())
-            }
+    async fn process(state: Arc<Self>, input: Message) -> Result<(), Error> {
+        let Some(reply) = input.message.reply.clone() else {
+            return Err(Error::PreProcessError(
+                crate::error::PreProcessError::UnexpectedNullReplySubject,
+            ));
+        };
+        let message = input.message;
+        let result = state.sub_processor.process(message).await;
+        if let Err(err) = result {
+            Err(err)
+        } else {
+            state
+                .nats_connection
+                .publish(reply, "".into())
+                .await
+                .map_err(|err| {
+                    Error::PostProcessError(crate::error::PostProcessError::NatsMessagePushError(
+                        err,
+                    ))
+                })?;
+            Ok(())
         }
     }
 }
@@ -64,9 +62,9 @@ where
     Et: crate::core::ErrorTracer,
 {
     /// Create a new [JetStreamConsumer].
-    /// 
+    ///
     /// parameters:
-    /// 
+    ///
     /// 1. `processor`: The processor function, must implement [FinalJetStreamProcessor] trait.
     /// 2. `nats_connection`: The NATS connection, must be `&'static async_nats::Client`.
     /// 3. `error_tracer`: The error tracer, must implement [ErrorTracer] trait. If you
@@ -84,7 +82,7 @@ where
             error_tracer,
         }
     }
-    
+
     /// Run the consumer.
     pub async fn run(self, mut stream: impl futures::Stream<Item = Message> + Unpin) {
         let processor = Arc::new(self.processor);

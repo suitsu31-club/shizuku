@@ -19,15 +19,13 @@ struct NatsReplyProcessor {
 }
 
 impl Processor<(Option<Subject>, Bytes), Result<(), Error>> for NatsReplyProcessor {
-    fn process<'p>(&'p self, input: (Option<Subject>, Bytes)) -> impl Future<Output=Result<(), Error>> + Send + 'p {
-        async move {
-            let Some(reply_subject) = input.0 else {
-                return Err(Error::PostProcessError(PostProcessError::UnexpectedNullReplySubject))
-            };
-            self.nats_connection.publish(reply_subject, input.1).await
-                .map_err(|err| Error::PostProcessError(PostProcessError::NatsMessagePushError(err)))?;
-            Ok(())
-        }
+    async fn process(&self, input: (Option<Subject>, Bytes)) -> Result<(), Error> {
+        let Some(reply_subject) = input.0 else {
+            return Err(Error::PostProcessError(PostProcessError::UnexpectedNullReplySubject))
+        };
+        self.nats_connection.publish(reply_subject, input.1).await
+            .map_err(|err| Error::PostProcessError(PostProcessError::NatsMessagePushError(err)))?;
+        Ok(())
     }
 }
 
