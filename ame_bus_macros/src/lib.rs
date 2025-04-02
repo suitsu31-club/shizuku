@@ -17,29 +17,3 @@ pub fn derive_jetstream_message_send(input: TokenStream) -> TokenStream {
 pub fn derive_core_message_send(input: TokenStream) -> TokenStream {
     derive_trait::core_message_send::derive_core_message_send(input)
 }
-
-#[proc_macro_attribute]
-pub fn jet(attr: TokenStream, item: TokenStream) -> TokenStream {
-    attr::stream_meta::jetstream_meta(attr, item)
-}
-
-#[proc_macro_attribute]
-pub fn jet_consumer(attr: TokenStream, item: TokenStream) -> TokenStream {
-    attr::consumer::jetstream_consumer(attr, item)
-}
-
-#[proc_macro_attribute]
-pub fn rpc_service(attr: TokenStream, item: TokenStream) -> TokenStream {
-    attr::rpc_service::rpc_service_impl(attr, item)
-}
-
-#[proc_macro_attribute]
-pub fn rpc_route(attr: TokenStream, item: TokenStream) -> TokenStream {
-    attr::rpc_route::rpc_route_impl(attr, item)
-}
-
-#[proc_macro_attribute]
-pub fn nats_message(attr: TokenStream, item: TokenStream) -> TokenStream {
-    attr::nats_message::message(attr, item)
-}
-
