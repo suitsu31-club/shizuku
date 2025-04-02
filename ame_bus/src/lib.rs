@@ -24,3 +24,19 @@ pub use core::error;
 
 pub use tracing;
 pub use futures;
+
+#[cfg(feature = "json")]
+/// Implement [ByteDeserialize] by `serde_json` if it already implements `serde::Deserialize`.
+pub use ame_bus_macros::JsonByteDes;
+
+#[cfg(feature = "json")]
+/// Implement [ByteSerialize] by `serde_json` if it already implements `serde::Serialize`.
+pub use ame_bus_macros::JsonByteSer;
+
+#[cfg(feature = "protobuf")]
+/// Implement [ByteDeserialize] by `prost` if it already implements `prost::Message`.
+pub use ame_bus_macros::ProtoDes;
+
+#[cfg(feature = "protobuf")]
+/// Implement [ByteSerialize] by `prost` if it already implements `prost::Message`.
+pub use ame_bus_macros::ProtoSer;
