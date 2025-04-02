@@ -1,151 +1,279 @@
-use async_nats::jetstream::kv;
-use std::marker::PhantomData;
+use crate::kv::kv::WatchError;
+use crate::kv::kv::Watch;
 use crate::{ByteDeserialize, ByteSerialize};
+use async_nats::jetstream::kv;
+use async_nats::jetstream::kv::{Entry, EntryError, Store};
+use std::fmt::{Debug, Display, Formatter};
 
-#[async_trait::async_trait]
-/// A Value that can be stored in the NATS JetStream Key/Value Store.
-pub trait NatsKvValue: ByteDeserialize + ByteSerialize + Sync + Send {
-    /// The key type for the value. Usually `String` or `&'static str`.
-    ///
-    /// The key type must implement `Into<String>` if the key is dynamic.
-    /// If the Key is static, you can use `&'static str` as the Key type.
-    type Key: Into<String> + Send + Sync;
+/// A value in KV store that has a static key.
+pub trait StaticKeyIndexedValue {
+    /// The key of the value. Must be constant.
+    fn key() -> String;
+}
 
-    /// The name of the bucket
-    const BUCKET: &'static str;
+impl<T: StaticKeyIndexedValue + Clone + Send + Sync> KeyValue for T {
+    type Key = String;
+    type Value = T;
 
-    /// The configuration for the store.
-    fn store_config() -> kv::Config {
-        kv::Config {
-            bucket: Self::BUCKET.to_owned(),
-            ..Default::default()
-        }
+    fn key(&self) -> Self::Key {
+        Self::key()
     }
 
-    /// Attach `Self::Key`, combine the key with the value into [NatsKv]
-    fn with_key(self, key: Self::Key) -> NatsKv<Self::Key, Self> {
-        NatsKv::new(key, self)
+    fn value(&self) -> Self::Value {
+        self.clone()
     }
 
-    /// Retrieves the last [Entry](NatsKvEntry) for a given key from a bucket.
-    async fn entry(
-        store: &kv::Store,
-        key: Self::Key,
-    ) -> anyhow::Result<Option<NatsKvEntry<Self::Key, Self>>> {
-        let key = key.into();
-        let entry = store.entry(key).await?;
-        let entry = entry.map(NatsKvEntry::new);
-        Ok(entry)
+    fn into_value(self) -> Self::Value {
+        self
     }
 
-    /// Retrieves the value for a given key from a bucket.
-    async fn get(store: &kv::Store, key: Self::Key) -> anyhow::Result<Option<Self>> {
-        let value = store
-            .get(key.into())
-            .await?
-            .map(|value| Self::parse_from_bytes(&value));
-        Ok(value.transpose()?)
-    }
-
-    /// Mark a value as deleted by key.
-    async fn delete_by_key(store: &kv::Store, key: Self::Key) -> anyhow::Result<()> {
-        store.delete(key.into()).await?;
-        Ok(())
-    }
-
-    /// Update a value as deleted by key,
-    /// if the version in this function is the latest version in the store.
-    async fn delete_expect_revision(
-        store: &kv::Store,
-        key: Self::Key,
-        version: u64,
-    ) -> anyhow::Result<()> {
-        store
-            .delete_expect_revision(key.into(), Some(version))
-            .await?;
-        Ok(())
+    fn new(_key: Self::Key, value: Self::Value) -> Self {
+        value
     }
 }
 
-/// A Key/Value pair for the NATS JetStream Key/Value Store.
+/// A struct that have both the key and value.
 ///
-/// The key must be static.
-pub trait NatsStaticKeyKvValue: Sync + Send {
-    /// The key of kv pair
-    const KEY: &'static str;
+/// If a value has a static key (by implementing [StaticKeyIndexedValue]),
+/// and it implements `Clone`, it can implement this trait automatically.
+pub trait KeyValue: Sized + Send + Sync {
+    /// The key type.
+    type Key: Into<String> + Send + Sync + Sized;
 
-    /// The name of the bucket
-    const BUCKET: &'static str;
-}
+    /// The value type.
+    type Value: Send + Sync + Sized;
 
-impl<T> NatsKvValue for T
-    where T: NatsStaticKeyKvValue + ByteDeserialize + ByteSerialize
-{
-    type Key = &'static str;
-    const BUCKET: &'static str = <Self as NatsStaticKeyKvValue>::BUCKET;
-}
+    /// The key of the value. Must be dynamic.
+    fn key(&self) -> Self::Key;
 
-/// A Key/Value pair for the NATS JetStream Key/Value Store.
-pub struct NatsKv<K, V>(pub K, pub V)
-where
-    K: Into<String> + Send + Sync,
-    V: NatsKvValue<Key = K> + Send + Sync;
+    /// Get the value.
+    fn value(&self) -> Self::Value;
 
-impl<K, V> NatsKv<K, V>
-where
-    K: Into<String> + Send + Sync,
-    V: NatsKvValue<Key = K> + Send + Sync,
-{
-    /// Create a new Key/Value pair.
-    pub fn new(key: K, value: V) -> Self {
-        Self(key, value)
+    /// Get the value by moving the value out.
+    fn into_value(self) -> Self::Value;
+
+    /// Create the pair from key and value.
+    fn new(key: Self::Key, value: Self::Value) -> Self;
+    
+    /// Delete the value from the store.
+    fn delete_anyway(
+        store: &Store,
+        key: Self::Key,
+    ) -> impl Future<Output = Result<(), async_nats::Error>> + Send {
+        async move {
+            let key: String = key.into();
+            store.delete(key).await?;
+            Ok(())
+        }
     }
-
-    /// Put the value into the store.
-    ///
-    /// If the key already exists, it will be overwritten.
-    pub async fn put(self, store: &kv::Store) -> anyhow::Result<()> {
-        let key = self.0.into();
-        let value = self.1.to_bytes()?;
-        store.put(key, value.to_vec().into()).await?;
-        Ok(())
+    
+    /// Delete the value from the store atomically.
+    /// 
+    /// The `revision` is the expected revision of the value. If the revision is not matched, the delete will fail.
+    fn delete_atomically(
+        store: &Store,
+        key: Self::Key,
+        revision: u64,
+    ) -> impl Future<Output = Result<(), async_nats::Error>> + Send {
+        async move {
+            let key: String = key.into();
+            store.delete_expect_revision(key, Some(revision)).await?;
+            Ok(())
+        }
     }
-
-    /// Update the value in the store.
-    /// If the version in this function is the latest version in the store.
-    ///
-    /// This is very useful for atomic operations and synchronization.
-    pub async fn update(self, store: &kv::Store, reversion: u64) -> anyhow::Result<u64> {
-        let key = self.0.into();
-        let value = self.1.to_bytes()?;
-        let new = store.update(key, value.to_vec().into(), reversion).await?;
-        Ok(new)
+    
+    /// Purges all the revisions of an entry destructively, leaving behind a single purge entry in-place.
+    fn purge(
+        store: &Store,
+        key: Self::Key,
+    ) -> impl Future<Output = Result<(), async_nats::Error>> + Send {
+        async move {
+            let key: String = key.into();
+            store.purge(key).await?;
+            Ok(())
+        }
     }
 }
 
-/// A wrapper around a [NATS SDK's Entry](kv::Entry).
-pub struct NatsKvEntry<K: Into<String>, V: NatsKvValue<Key = K>> {
-    #[allow(missing_docs)]
-    pub entry: kv::Entry,
-    value: PhantomData<V>,
+/// Result from atomic read or history read
+pub struct KvEntry<V: ByteDeserialize> {
+    /// Name of the bucket the entry is in.
+    pub bucket: String,
+
+    /// The key that was retrieved.
+    pub key: String,
+
+    /// The value that was retrieved.
+    pub value: V,
+
+    /// A unique sequence for this value.
+    pub revision: u64,
+
+    /// Distance from the latest value.
+    pub delta: u64,
+
+    /// The time the data was put in the bucket.
+    pub created_at: time::OffsetDateTime,
+
+    /// The kind of operation that caused this entry.
+    pub operation: kv::Operation,
+
+    /// Set to true after all historical messages have been received, and now all Entries are the new ones.
+    pub seen_current: bool,
 }
 
-impl<K, V> NatsKvEntry<K, V>
+impl<V: ByteDeserialize> TryFrom<Entry> for KvEntry<V> {
+    type Error = V::DeError;
+
+    fn try_from(value: Entry) -> Result<Self, Self::Error> {
+        Ok(Self {
+            bucket: value.bucket,
+            key: value.key,
+            value: V::parse_from_bytes(value.value)?,
+            revision: value.revision,
+            delta: value.delta,
+            created_at: value.created,
+            operation: value.operation,
+            seen_current: value.seen_current,
+        })
+    }
+}
+
+#[derive(Debug)]
+enum KvReadError<V: ByteDeserialize> {
+    EntryError(EntryError),
+    DeserializeError(V::DeError),
+}
+
+impl<V: ByteDeserialize> From<EntryError> for KvReadError<V> {
+    fn from(err: EntryError) -> Self {
+        Self::EntryError(err)
+    }
+}
+
+impl<V: ByteDeserialize> Display for KvReadError<V> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EntryError(err) => write!(f, "Entry error: {}", err),
+            Self::DeserializeError(err) => write!(f, "Deserialize error: {}", err),
+        }
+    }
+}
+
+impl<V: ByteDeserialize + Debug> std::error::Error for KvReadError<V> {}
+
+/// A value that can be read from KV store.
+/// 
+/// If the `Value` type implements [ByteDeserialize], and
+/// the `Key` type implements `Clone`, it can implement this trait automatically.
+pub trait KeyValueRead: KeyValue
 where
-    K: Into<String> + Send + Sync,
-    V: NatsKvValue<Key = K> + Send + Sync,
+    Self::Value: ByteDeserialize,
+    Self::Key: Clone,
 {
-    #[allow(missing_docs)]
-    pub fn new(entry: kv::Entry) -> Self {
-        Self {
-            entry,
-            value: PhantomData,
+    /// Read the value from the store.
+    fn read_from(
+        store: &Store,
+        key: Self::Key,
+    ) -> impl Future<Output = Result<Option<Self>, KvReadError<Self::Value>>> + Send {
+        async move {
+            store
+                .get(key.clone())
+                .await?
+                .map(|value| {
+                    Self::Value::parse_from_bytes(value)
+                        .map_err(KvReadError::DeserializeError)
+                        .map(|parsed| Self::new(key.clone(), parsed))
+                })
+                .transpose()
         }
     }
 
-    /// Parse the value from the entry.
-    pub fn value(&self) -> anyhow::Result<V> {
-        let value = V::parse_from_bytes(&self.entry.value)?;
-        Ok(value)
+    /// Read the value from the store atomically.
+    ///
+    /// Always get the latest version
+    fn atomic_read_from(
+        store: &Store,
+        key: Self::Key,
+    ) -> impl Future<Output = Result<Option<KvEntry<Self::Value>>, KvReadError<Self::Value>>> + Send
+    {
+        async move {
+            store
+                .entry(key.clone())
+                .await?
+                .map(|value| KvEntry::try_from(value).map_err(KvReadError::DeserializeError))
+                .transpose()
+        }
+    }
+
+    /// Read a history version of the value from the store.
+    fn history_read_from(
+        store: &Store,
+        key: Self::Key,
+        revision: u64,
+    ) -> impl Future<Output = Result<Option<KvEntry<Self::Value>>, KvReadError<Self::Value>>> + Send
+    {
+        async move {
+            store
+                .entry_for_revision(key.clone(), revision)
+                .await?
+                .map(|entry| KvEntry::try_from(entry).map_err(KvReadError::DeserializeError))
+                .transpose()
+        }
+    }
+    
+    /// Watch the value in the store. Yields the value when it is updated.
+    fn watch(
+        store: &Store,
+        key: Self::Key,
+    ) -> impl Future<Output = Result<Watch, WatchError>> + Send {
+        async move {
+            let key: String = key.into();
+            store.watch(key).await
+        }
+    }
+}
+
+impl<T: KeyValue> KeyValueRead for T 
+    where
+        T::Value: ByteDeserialize,
+        T::Key: Clone,
+{}
+
+/// A value that can be written to KV store.
+pub trait KeyValueWrite: KeyValue
+where
+    Self::Value: ByteSerialize,
+    Self::Key: Into<String> + Send + Sync + Sized,
+{
+    /// Write the value to the store.
+    fn write_to_anyway(
+        &self,
+        store: &Store,
+    ) -> impl Future<Output = Result<(), async_nats::Error>> + Send {
+        async move {
+            let key: String = self.key().into();
+            store
+                .put(key, self.value().to_bytes()?.into())
+                .await?;
+            Ok(())
+        }
+    }
+    
+    /// Write the value to the store atomically.
+    /// 
+    /// The `revision` is the expected revision of the value. If the revision is not matched, the write will fail.
+    fn write_to_atomically(
+        &self,
+        store: &Store,
+        revision: u64,
+    ) -> impl Future<Output = Result<u64, async_nats::Error>> + Send {
+        async move {
+            let key: String = self.key().into();
+            let new_version = store
+                .update(key, self.value().to_bytes()?.into(), revision)
+                .await?;
+            Ok(new_version)
+        }
     }
 }

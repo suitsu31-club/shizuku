@@ -70,7 +70,10 @@ pub enum PreProcessError {
     DeserializeError(DeserializeError),
 
     /// For a JetStream message, the reply subject is null.
-    UnexpectedNullReplySubject
+    UnexpectedNullReplySubject,
+    
+    /// Unexpected subject. Can be JstStream message or NATS message.
+    UnexpectedSubject(async_nats::Subject)
 }
 
 impl Display for PreProcessError {
@@ -78,6 +81,7 @@ impl Display for PreProcessError {
         match self {
             PreProcessError::DeserializeError(err) => write!(f, "Failed to deserialize message:\n {}", err.0),
             PreProcessError::UnexpectedNullReplySubject => write!(f, "Unexpected null reply subject"),
+            PreProcessError::UnexpectedSubject(subject) => write!(f, "Unexpected subject: {}", subject),
         }
     }
 }

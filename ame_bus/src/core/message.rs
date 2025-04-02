@@ -1,8 +1,8 @@
+use std::fmt::Display;
 use crate::error::{DeserializeError, PostProcessError, SerializeError};
 use async_nats::jetstream::Context;
 use compact_str::CompactString;
 use std::future::Future;
-use std::sync::Arc;
 use async_nats::Subject;
 use async_nats::subject::ToSubject;
 // ---------------------------------------------
@@ -16,7 +16,7 @@ where
     type SerError: Into<SerializeError> + std::error::Error + Send + Sync + 'static;
 
     /// serialize message to bytes. Can be any format.
-    fn to_bytes(&self) -> Result<Arc<[u8]>, Self::SerError>;
+    fn to_bytes(&self) -> Result<Box<[u8]>, Self::SerError>;
 }
 
 /// This data can be deserialized from bytes.
@@ -31,31 +31,10 @@ where
     fn parse_from_bytes(bytes: impl AsRef<[u8]>) -> Result<Self, Self::DeError>;
 }
 
-/// Message in NATS core (including service RPC).
-pub trait NatsCoreMessageSendTrait: ByteSerialize + DynamicSubjectNatsMessage {
-    #[doc(hidden)]
-    /// Publish the message to the NATS server.
-    ///
-    /// **DO NOT OVERRIDE THIS FUNCTION.**
-    fn publish(
-        &self,
-        nats: &async_nats::Client,
-    ) -> impl Future<Output = Result<(), PostProcessError>> + Send {
-        async move {
-            let subject = self.subject();
-            let bytes = self
-                .to_bytes()
-                .map_err(|err| Into::<SerializeError>::into(err))?;
-            nats.publish(subject, bytes.to_vec().into()).await?;
-            Ok(())
-        }
-    }
-}
-
 // ---------------------------------------------
 
 /// Message in NATS JetStream that can be published.
-pub trait JetStreamMessageSendTrait: ByteSerialize + DynamicSubjectNatsMessage {
+pub trait JetStreamMessageSendTrait: ByteSerialize + DynamicSubjectMessage {
     #[doc(hidden)]
     /// Publish the message to the NATS server.
     ///
@@ -91,10 +70,22 @@ impl ToSubject for NatsSubjectPath {
     }
 }
 
+impl Display for NatsSubjectPath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.join("."))
+    }
+}
+
+impl Into<String> for NatsSubjectPath {
+    fn into(self) -> String {
+        self.0.join(".")
+    }
+}
+
 /// NATS Message that has a subject.
 ///
 /// Can be dynamic or static. Can be NATS core message or JetStream message.
-pub trait DynamicSubjectNatsMessage {
+pub trait DynamicSubjectMessage {
     /// The subject of the message. Can be dynamic.
     fn subject(&self) -> NatsSubjectPath;
 }
@@ -102,14 +93,14 @@ pub trait DynamicSubjectNatsMessage {
 /// NATS Message that has a subject.
 ///
 /// Must be static. Can be NATS core message or JetStream message.
-pub trait StaticSubjectNatsMessage {
+pub trait StaticSubjectMessage {
     /// The subject of the message. Must be static.
     fn subject() -> NatsSubjectPath;
 }
 
-impl<T> DynamicSubjectNatsMessage for T
+impl<T> DynamicSubjectMessage for T
 where
-    T: StaticSubjectNatsMessage,
+    T: StaticSubjectMessage,
 {
     fn subject(&self) -> NatsSubjectPath {
         T::subject()
@@ -124,9 +115,9 @@ where
 {
     type SerError = serde_json::Error;
 
-    fn to_bytes(&self) -> Result<Arc<[u8]>, Self::SerError> {
+    fn to_bytes(&self) -> Result<Box<[u8]>, Self::SerError> {
         let json = serde_json::to_string(self)?;
-        Ok(json.as_bytes().to_vec().into())
+        Ok(json.into_bytes().into())
     }
 }
 

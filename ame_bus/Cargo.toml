@@ -1,6 +1,6 @@
 [package]
 name = "ame-bus"
-version = "1.1.0"
+version = "1.2.0"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/Ame-Build/ame-bus.git"
@@ -25,7 +25,7 @@ async-nats = { workspace = true }
 smallvec = {workspace = true}
 compact_str = {workspace = true}
 ame_bus_macros = "0.2.2"
-num_cpus = "1.16.0"
+time = "0.3.41"
 
 [features]
 json = ["serde_json", "serde"]
