@@ -8,7 +8,7 @@ description = "Modern microservices framework based on NATS."
 authors = ["Nikaidou Haruki <nharuki@pm.me>"]
 
 [package.metadata.docs.rs]
-features = ["full"]
+features = ["json", "protobuf"]
 
 [dependencies]
 tokio = { workspace = true}

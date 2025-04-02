@@ -3,17 +3,22 @@ use proc_macro::TokenStream;
 mod attr;
 mod derive_trait;
 
-#[proc_macro_derive(NatsJsonMessage)]
-pub fn derive_nats_json_message(input: TokenStream) -> TokenStream {
-    derive_trait::nats_json_message::derive_nats_json_message(input)
+#[proc_macro_derive(ProtoSer)]
+pub fn derive_proto_ser(input: TokenStream) -> TokenStream {
+    derive_trait::proto_ser::derive_proto_ser(input)
 }
 
-#[proc_macro_derive(DeriveJetMessageSend)]
-pub fn derive_jetstream_message_send(input: TokenStream) -> TokenStream {
-    derive_trait::jetstream_message_send::derive_jetstream_message_send(input)
+#[proc_macro_derive(ProtoDes)]
+pub fn derive_proto_des(input: TokenStream) -> TokenStream {
+    derive_trait::proto_des::derive_proto_des(input)
 }
 
-#[proc_macro_derive(DeriveCoreMessageSend)]
-pub fn derive_core_message_send(input: TokenStream) -> TokenStream {
-    derive_trait::core_message_send::derive_core_message_send(input)
+#[proc_macro_derive(JsonByteSer)]
+pub fn derive_json_byte_ser(input: TokenStream) -> TokenStream {
+    derive_trait::json_byte_ser::derive_json_byte_ser(input)
+}
+
+#[proc_macro_derive(JsonByteDes)]
+pub fn derive_json_byte_des(input: TokenStream) -> TokenStream {
+    derive_trait::json_byte_des::derive_json_byte_des(input)
 }
