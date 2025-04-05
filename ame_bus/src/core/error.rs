@@ -205,4 +205,18 @@ mod auto_implement {
             DeserializeError(err.into())
         }
     }
+    
+    #[cfg(feature = "protobuf")]
+    impl From<prost::EncodeError> for SerializeError {
+        fn from(err: prost::EncodeError) -> Self {
+            SerializeError(err.into())
+        }
+    }
+    
+    #[cfg(feature = "protobuf")]
+    impl From<prost::DecodeError> for DeserializeError {
+        fn from(err: prost::DecodeError) -> Self {
+            DeserializeError(err.into())
+        }
+    }
 }

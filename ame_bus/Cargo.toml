@@ -1,6 +1,6 @@
 [package]
 name = "ame-bus"
-version = "1.2.1-alpha.1"
+version = "1.2.1-alpha.2"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/Ame-Build/ame-bus.git"
