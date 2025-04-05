@@ -18,6 +18,7 @@ pub mod service_rpc;
 
 #[cfg(test)]
 mod tests;
+mod fn_macro;
 
 pub use core::message::*;
 pub use core::error;
