@@ -23,6 +23,7 @@ mod fn_macro;
 pub use core::message::*;
 pub use core::error;
 pub use core::error::Error;
+pub use core::processor::*;
 
 pub use tracing;
 pub use futures;
