@@ -12,6 +12,12 @@ pub trait FinalNatsProcessor:
 {
 }
 
+/// A marker trait, mark a processor as a service endpoint.
+pub trait ServiceEndpoint: Processor<Message, Result<Bytes, Error>> {
+    /// The subject of the endpoint.
+    const SUBJECT: &'static str;
+}
+
 #[derive(Debug, Clone)]
 /// The processor used to reply the request. Will only be used in [NatsService].
 struct NatsReplyProcessor {
@@ -80,4 +86,60 @@ impl<F, Et> NatsService<F, Et>
             Et::process(error_tracer.clone(), sent).await;
         }
     }
+}
+
+/// Routes NATS messages to appropriate service endpoints based on their subjects.
+/// 
+/// Example:
+/// ```rust
+/// # use async_nats::Message;
+/// # use ame_bus::{service_route, Processor, Error};
+/// # use bytes::Bytes;
+/// use ame_bus::service_rpc::ServiceEndpoint;
+///
+/// struct CreateProcessor;     // example
+/// impl Processor<Message, Result<Bytes, Error>> for CreateProcessor {
+///     async fn process(&self, input: Message) -> Result<Bytes, Error> {
+///         unimplemented!()
+///     }
+/// }
+/// impl ServiceEndpoint for CreateProcessor {
+///     const SUBJECT: &'static str = "your_service.create";
+/// }
+/// 
+/// struct ReadProcessor;        // example
+/// impl Processor<Message, Result<Bytes, Error>> for ReadProcessor {
+///     async fn process(&self, input: Message) -> Result<Bytes, Error> {
+///         unimplemented!()
+///     }
+/// }
+/// impl ServiceEndpoint for ReadProcessor {
+///     const SUBJECT: &'static str = "your_service.read";
+/// }
+/// 
+/// async fn route_request(input: Message) -> Result<Bytes, Error> {
+///     let create_processor = CreateProcessor;
+///     let read_processor = ReadProcessor;
+///     service_route![
+///         input,
+///         (CreateProcessor, &create_processor),
+///         (ReadProcessor, &read_processor),
+///     ]
+/// }
+/// 
+/// ```
+#[macro_export]
+macro_rules! service_route {
+    [$input:expr, $(($processor_type:ty, $processor:expr)),* $(,)?] => {{
+        match $input.subject.as_str() {
+            $(
+                <$processor_type>::SUBJECT => {
+                    <$processor_type>::process($processor, $input).await
+                },
+            )*
+            _ => Err($crate::error::Error::PreProcessError(
+                $crate::error::PreProcessError::UnexpectedSubject($input.subject)
+            ))
+        }
+    }};
 }
