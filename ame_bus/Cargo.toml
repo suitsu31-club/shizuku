@@ -1,6 +1,6 @@
 [package]
 name = "ame-bus"
-version = "1.2.1-alpha.2"
+version = "1.2.1-alpha.3"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/Ame-Build/ame-bus.git"
@@ -24,7 +24,7 @@ bytes = {workspace = true}
 async-nats = { workspace = true }
 smallvec = {workspace = true}
 compact_str = {workspace = true}
-ame_bus_macros = "0.3.0-alpha.1"
+ame_bus_macros = "0.3.0-alpha.2"
 time = "0.3.41"
 
 [features]
