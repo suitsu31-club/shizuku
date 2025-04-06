@@ -30,7 +30,7 @@ dependencies = [
 name = "ame-bus"
 version = "1.2.1-alpha.2"
 dependencies = [
- "ame_bus_macros 0.3.0-alpha.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ame_bus_macros 0.3.0-alpha.1",
  "anyhow",
  "async-nats",
  "async-trait",
@@ -50,6 +50,8 @@ dependencies = [
 [[package]]
 name = "ame_bus_macros"
 version = "0.3.0-alpha.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f616b6a9889284fd372a8dba703df13038567f230254b7f8560ba05f518bed21"
 dependencies = [
  "convert_case",
  "proc-macro2",
@@ -60,9 +62,7 @@ dependencies = [
 
 [[package]]
 name = "ame_bus_macros"
-version = "0.3.0-alpha.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f616b6a9889284fd372a8dba703df13038567f230254b7f8560ba05f518bed21"
+version = "0.3.0-alpha.2"
 dependencies = [
  "convert_case",
  "proc-macro2",

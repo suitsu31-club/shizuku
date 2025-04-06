@@ -7,7 +7,7 @@ pub fn derive_json_byte_des(input: TokenStream) -> TokenStream {
     let name = &input.ident;
 
     quote! {
-        impl ame_bus::message::ByteDeserialize for #name {
+        impl ame_bus::ByteDeserialize for #name {
             type DeError = serde_json::Error;
 
             fn parse_from_bytes(bytes: impl AsRef<[u8]>) -> Result<Self, Self::DeError> {
