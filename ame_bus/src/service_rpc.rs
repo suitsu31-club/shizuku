@@ -93,8 +93,10 @@ impl<F, Et> NatsService<F, Et>
 /// Example:
 /// ```rust
 /// # use async_nats::Message;
-/// # use ame_bus::{service_route, Processor, Error};
+/// # use ame_bus::{service_route, Processor, Error, FinalProcessor};
+/// # use ame_bus::service_rpc::FinalNatsProcessor;
 /// # use bytes::Bytes;
+/// # use std::sync::Arc;
 /// use ame_bus::service_rpc::ServiceEndpoint;
 ///
 /// struct CreateProcessor;     // example
@@ -106,7 +108,7 @@ impl<F, Et> NatsService<F, Et>
 /// impl ServiceEndpoint for CreateProcessor {
 ///     const SUBJECT: &'static str = "your_service.create";
 /// }
-/// 
+///
 /// struct ReadProcessor;        // example
 /// impl Processor<Message, Result<Bytes, Error>> for ReadProcessor {
 ///     async fn process(&self, input: Message) -> Result<Bytes, Error> {
@@ -116,17 +118,22 @@ impl<F, Et> NatsService<F, Et>
 /// impl ServiceEndpoint for ReadProcessor {
 ///     const SUBJECT: &'static str = "your_service.read";
 /// }
-/// 
-/// async fn route_request(input: Message) -> Result<Bytes, Error> {
-///     let create_processor = CreateProcessor;
-///     let read_processor = ReadProcessor;
-///     service_route![
-///         input,
-///         (CreateProcessor, &create_processor),
-///         (ReadProcessor, &read_processor),
-///     ]
+///
+/// struct YourService {
+///     create_processor: CreateProcessor,
+///     read_processor: ReadProcessor,
+/// }
+///
+/// impl FinalProcessor<Message, Result<Bytes, Error>> for YourService {
+///     async fn process(state: Arc<Self>, input: Message) -> Result<Bytes, Error> {
+///         service_route![input,
+///             (CreateProcessor, &state.create_processor),
+///             (ReadProcessor, &state.read_processor),
+///         ]
+///     }
 /// }
 /// 
+/// impl FinalNatsProcessor for YourService {}
 /// ```
 #[macro_export]
 macro_rules! service_route {
