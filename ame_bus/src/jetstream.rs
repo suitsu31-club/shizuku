@@ -139,7 +139,7 @@ where
 ///         jet_route![
 ///             input,
 ///             ["invoice"] => (&self.invoice_processor),
-///             ["order", "paid", *] => (&self.order_paid_processor),
+///             ["order", "paid", "*"] => (&self.order_paid_processor),
 ///             ["order", "cancelled"] => (&self.order_cancelled_processor)
 ///         ]
 ///     }
@@ -148,7 +148,7 @@ where
 /// impl FinalJetStreamProcessor for OrderService {}
 macro_rules! jet_route {
     [$message_input:expr, $(
-        [$($path:tt),+] => $handler:tt
+        [$($path:literal),+] => $handler:tt
     ),+] => {{
         let message_input: async_nats::Message = $message_input;
         let _depth = 0;
@@ -170,26 +170,26 @@ macro_rules! jet_route {
 #[doc(hidden)]
 /// handle the path
 macro_rules! path_route_helper {
-    // [*] => (handler)
+    // ["*"] => (handler)
     // end with wildcard, the handler is a processor
     (
-        [*] => ($handler:expr)
+        ["*"] => ($handler:expr)
         @
         ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
     ) => {
         return $handler.process($message_input).await;
     };
     
-    // [*] => [
-    //     ["foo1"."bar1".*."baz1".>] => (handler1),
-    //     ["foo2"."bar2".*."baz2"] => [
-    //         ["foo21"."bar21".*."baz21"] => (handler21),
+    // ["*"] => [
+    //     ["foo1"."bar1"."*"."baz1".>] => (handler1),
+    //     ["foo2"."bar2"."*"."baz2"] => [
+    //         ["foo21"."bar21"."*"."baz21"] => (handler21),
     //     ],
     // ]
     // end with wildcard, the handler is a nested path
     (
-        [*] => [
-            $( [$($path:tt),+] => $handler:tt ),+
+        ["*"] => [
+            $( [$($path:literal),+] => $handler:tt ),+
         ]
         @
         ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
@@ -205,10 +205,10 @@ macro_rules! path_route_helper {
         }
     }};
     
-    // [>] => (handler)
+    // [">"] => (handler)
     // recursive wildcard, the handler is a processor
     (
-        [>] => ($handler:expr)
+        [">"] => ($handler:expr)
         @
         ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
     ) => {
@@ -218,8 +218,8 @@ macro_rules! path_route_helper {
     // when use recursive wildcard, the handler must be a processor
     // so, there is no need to handle recursive wildcard
     (
-        [>] => [
-            $( [$($path:tt),+] => $handler:tt ),+
+        [">"] => [
+            $( [$($path:literal),+] => $handler:tt ),+
         ]
         @
         ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
@@ -230,7 +230,7 @@ macro_rules! path_route_helper {
     // ["foo"] => (handler)
     // one segment path, the handler is a processor
     (
-        [$one_seg_path:expr] => ($handler:expr)
+        [$one_seg_path:literal] => ($handler:expr)
         @
         ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
     ) => {
@@ -241,8 +241,8 @@ macro_rules! path_route_helper {
     
     // one segment path, the handler is a nested path
     (
-        [$one_seg_path:expr] => [
-            $( [$($path:tt),+] => $handler:tt ),+
+        [$one_seg_path:literal] => [
+            $( [$($path:literal),+] => $handler:tt ),+
         ]
         @
         ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
@@ -260,8 +260,8 @@ macro_rules! path_route_helper {
     
     // wildcard in the beginning or middle
     (
-        [*, $($rest_seg_path:tt),+] => [
-            $( [$($path:tt),+] => $handler:tt ),+
+        ["*", $($rest_seg_path:literal),+] => [
+            $( [$($path:literal),+] => $handler:tt ),+
         ]
         @
         ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
@@ -278,7 +278,7 @@ macro_rules! path_route_helper {
     // recursive wildcard in the beginning or middle
     // not allowed
     (
-        [>, $($rest_seg_path:tt),+] => [$([$($path:tt),+] => $handler:tt),+]
+        [">", $($rest_seg_path:literal),+] => [$([$($path:literal),+] => $handler:tt),+]
         @
         ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
     ) => {
@@ -287,7 +287,7 @@ macro_rules! path_route_helper {
     
     // multi segment path, the handler is a processor
     (
-        [$one_seg_path:expr, $($rest_seg_path:tt),+] => ($handler:expr)
+        [$one_seg_path:literal, $($rest_seg_path:literal),+] => ($handler:expr)
         @
         ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
     ) => {
@@ -304,8 +304,8 @@ macro_rules! path_route_helper {
     
     // multi segment path, the handler is a nested path
     (
-        [$one_seg_path:expr, $($rest_seg_path:tt),+] => [
-            $( [$($path:tt),+] => $handler:tt ),+
+        [$one_seg_path:literal, $($rest_seg_path:literal),+] => [
+            $( [$($path:literal),+] => $handler:tt ),+
         ]
         @
         ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
@@ -328,7 +328,7 @@ macro_rules! path_route_helper {
 macro_rules! nest_route_helper {
     {
         [$(
-            [ $($path:tt),+ ] => $handler:tt
+            [ $($path:literal),+ ] => $handler:tt
         ),+]
         @
         ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
