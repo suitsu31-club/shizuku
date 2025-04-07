@@ -95,6 +95,57 @@ where
 }
 
 #[macro_export(local_inner_macros)]
+/// Define the jetstream route to build [FinalJetStreamProcessor]
+/// 
+/// Example:
+/// 
+/// ```rust
+/// # use ame_bus::jetstream::FinalJetStreamProcessor;
+/// # use ame_bus::{jet_route, Error, Processor};
+/// # use async_nats::Message;
+/// 
+/// struct OrderPaidProcessor; // example
+/// impl Processor<Message, Result<(), Error>> for OrderPaidProcessor {
+///     async fn process(&self, input: Message) -> Result<(), Error> {
+///         // Handle paid order message
+///         unimplemented!()
+///     }
+/// }
+/// 
+/// struct OrderCancelledProcessor; // example
+/// impl Processor<Message, Result<(), Error>> for OrderCancelledProcessor {
+///     async fn process(&self, input: Message) -> Result<(), Error> {
+///         // Handle cancelled order message
+///         unimplemented!()
+///     }
+/// }
+/// 
+/// struct InvoiceProcessor; // example
+/// impl Processor<Message, Result<(), Error>> for InvoiceProcessor {
+///     async fn process(&self, input: Message) -> Result<(), Error> {
+///         // Handle invoice message
+///         unimplemented!()
+///     }
+/// }
+/// 
+/// struct OrderService {
+///     order_paid_processor: OrderPaidProcessor,
+///     order_cancelled_processor: OrderCancelledProcessor,
+///     invoice_processor: InvoiceProcessor,
+/// }
+/// 
+/// impl Processor<Message, Result<(), Error>> for OrderService {
+///     async fn process(&self, input: Message) -> Result<(), Error> {
+///         jet_route![
+///             input,
+///             ["invoice"] => (&self.invoice_processor),
+///             ["order", "paid", *] => (&self.order_paid_processor),
+///             ["order", "cancelled"] => (&self.order_cancelled_processor)
+///         ]
+///     }
+/// }
+/// 
+/// impl FinalJetStreamProcessor for OrderService {}
 macro_rules! jet_route {
     [$message_input:expr, $(
         [$($path:tt),+] => $handler:tt
@@ -119,6 +170,7 @@ macro_rules! jet_route {
 #[doc(hidden)]
 /// handle the path
 macro_rules! path_route_helper {
+    // [*] => (handler)
     // end with wildcard, the handler is a processor
     (
         [*] => ($handler:expr)
@@ -128,19 +180,32 @@ macro_rules! path_route_helper {
         return $handler.process($message_input).await;
     };
     
+    // [*] => [
+    //     ["foo1"."bar1".*."baz1".>] => (handler1),
+    //     ["foo2"."bar2".*."baz2"] => [
+    //         ["foo21"."bar21".*."baz21"] => (handler21),
+    //     ],
+    // ]
     // end with wildcard, the handler is a nested path
     (
-        [*] => [$([$path:tt] => $handler:tt),+]
+        [*] => [
+            $( [$($path:tt),+] => $handler:tt ),+
+        ]
         @
         ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
     ) => {{
         nest_route_helper!{
-            [$([$path] => $handler),+]
+            [
+                $(
+                    [$($path),+] => $handler
+                ),+
+            ]
             @
             ($message_input, $depth, $subject, $unexpected_subject_error)
         }
     }};
     
+    // [>] => (handler)
     // recursive wildcard, the handler is a processor
     (
         [>] => ($handler:expr)
@@ -153,13 +218,16 @@ macro_rules! path_route_helper {
     // when use recursive wildcard, the handler must be a processor
     // so, there is no need to handle recursive wildcard
     (
-        [>] => [$([$path:tt] => $handler:tt),+]
+        [>] => [
+            $( [$($path:tt),+] => $handler:tt ),+
+        ]
         @
         ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
     ) => {
         compile_error!("Recursive wildcard \">\" must be the last segment");
     };
     
+    // ["foo"] => (handler)
     // one segment path, the handler is a processor
     (
         [$one_seg_path:expr] => ($handler:expr)
@@ -173,17 +241,48 @@ macro_rules! path_route_helper {
     
     // one segment path, the handler is a nested path
     (
-        [$one_seg_path:expr] => [$([$path:tt] => $handler:tt),+]
+        [$one_seg_path:expr] => [
+            $( [$($path:tt),+] => $handler:tt ),+
+        ]
         @
         ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
     ) => {
         if $subject[$depth] == $one_seg_path {
             nest_route_helper!{
-                [$([$path] => $handler),+]
+                [
+                    $([$($path),+] => $handler),+
+                ]
                 @
                 ($message_input, $depth, $subject, $unexpected_subject_error)
             }
         }
+    };
+    
+    // wildcard in the beginning or middle
+    (
+        [*, $($rest_seg_path:tt),+] => [
+            $( [$($path:tt),+] => $handler:tt ),+
+        ]
+        @
+        ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
+    ) => {{
+        nest_route_helper!{
+            [
+                [$($rest_seg_path),+] => [$([$($path),+] => $handler),+]
+            ]
+            @
+            ($message_input, $depth, $subject, $unexpected_subject_error)
+        }
+    }};
+    
+    // recursive wildcard in the beginning or middle
+    // not allowed
+    (
+        [>, $($rest_seg_path:tt),+] => [$([$($path:tt),+] => $handler:tt),+]
+        @
+        ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
+    ) => {
+        compile_error!("Recursive wildcard \">\" must be the last segment");
     };
     
     // multi segment path, the handler is a processor
@@ -194,7 +293,9 @@ macro_rules! path_route_helper {
     ) => {
         if $subject[$depth] == $one_seg_path {
             nest_route_helper!{
-                [[$($rest_seg_path),+] => ($handler)]
+                [
+                    [$($rest_seg_path),+] => ($handler)
+                ]
                 @
                 ($message_input, $depth, $subject, $unexpected_subject_error)
             }
@@ -203,40 +304,21 @@ macro_rules! path_route_helper {
     
     // multi segment path, the handler is a nested path
     (
-        [$one_seg_path:expr, $($rest_seg_path:tt),+] => [$([$path:tt] => $handler:tt),+]
+        [$one_seg_path:expr, $($rest_seg_path:tt),+] => [
+            $( [$($path:tt),+] => $handler:tt ),+
+        ]
         @
         ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
     ) => {
         if $subject[$depth] == $one_seg_path {
             nest_route_helper!{
-                [$($rest_seg_path),+] => [$([$path] => $handler),+]
+                [
+                    [$($rest_seg_path),+] => [$([$($path),+] => $handler),+]
+                ]
                 @
                 ($message_input, $depth, $subject, $unexpected_subject_error)
             }
         }
-    };
-    
-    // wildcard in the beginning or middle
-    (
-        [*, $($rest_seg_path:tt),+] => [$([$path:tt] => $handler:tt),+]
-        @
-        ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
-    ) => {{
-        nest_route_helper!{
-            [$($rest_seg_path),+] => [$([$path] => $handler),+]
-            @
-            ($message_input, $depth, $subject, $unexpected_subject_error)
-        }
-    }};
-    
-    // recursive wildcard in the beginning or middle
-    // not allowed
-    (
-        [>, $($rest_seg_path:tt),+] => [$([$path:tt] => $handler:tt),+]
-        @
-        ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
-    ) => {
-        compile_error!("Recursive wildcard \">\" must be the last segment");
     };
 }
 
@@ -246,16 +328,19 @@ macro_rules! path_route_helper {
 macro_rules! nest_route_helper {
     {
         [$(
-            [$($path:tt),*] => $handler:tt
+            [ $($path:tt),+ ] => $handler:tt
         ),+]
         @
         ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
     } => {
         let _depth = $depth + 1;
+        if $subject.len() <= _depth {
+            return $unexpected_subject_error;
+        }
         $(
             path_route_helper![
-                [$($path),*] => $handler 
-                @ 
+                [ $($path),+ ] => $handler
+                @
                 ($message_input, _depth, $subject, $unexpected_subject_error)
             ]
         )+;
