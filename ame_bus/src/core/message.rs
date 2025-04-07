@@ -155,6 +155,15 @@ pub enum SubjectMatcherField {
     RecursiveWildcard,
 }
 
+impl PartialEq<CompactString> for SubjectMatcherField {
+    fn eq(&self, other: &CompactString) -> bool {
+        match self {
+            SubjectMatcherField::Static(s) => s == other,
+            _ => true,
+        }
+    }
+}
+
 /// The subject matcher.
 ///
 /// Can check if a subject matches the matcher.

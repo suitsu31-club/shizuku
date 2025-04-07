@@ -93,3 +93,173 @@ where
         }
     }
 }
+
+#[macro_export(local_inner_macros)]
+macro_rules! jet_route {
+    [$message_input:expr, $(
+        [$($path:tt),+] => $handler:tt
+    ),+] => {{
+        let message_input: async_nats::Message = $message_input;
+        let _depth = 0;
+        let subject: Box<[_]> = message_input.subject.as_str().split('.').collect();
+        let unexpected_subject_error: Result<_, $crate::error::Error> = Err($crate::error::Error::PreProcessError(
+            $crate::error::PreProcessError::UnexpectedSubject(message_input.subject.clone())
+        ));
+        $(
+            path_route_helper!{
+                [$($path),+] => $handler @ (message_input, _depth, subject, unexpected_subject_error)
+            }
+        )+
+        #[allow(unreachable_code)]
+        return unexpected_subject_error;
+    }}
+}
+
+#[macro_export(local_inner_macros)]
+#[doc(hidden)]
+/// handle the path
+macro_rules! path_route_helper {
+    // end with wildcard, the handler is a processor
+    (
+        [*] => ($handler:expr)
+        @
+        ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
+    ) => {
+        return $handler.process($message_input).await;
+    };
+    
+    // end with wildcard, the handler is a nested path
+    (
+        [*] => [$([$path:tt] => $handler:tt),+]
+        @
+        ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
+    ) => {{
+        nest_route_helper!{
+            [$([$path] => $handler),+]
+            @
+            ($message_input, $depth, $subject, $unexpected_subject_error)
+        }
+    }};
+    
+    // recursive wildcard, the handler is a processor
+    (
+        [>] => ($handler:expr)
+        @
+        ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
+    ) => {
+        return $handler.process($message_input).await;
+    };
+    
+    // when use recursive wildcard, the handler must be a processor
+    // so, there is no need to handle recursive wildcard
+    (
+        [>] => [$([$path:tt] => $handler:tt),+]
+        @
+        ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
+    ) => {
+        compile_error!("Recursive wildcard \">\" must be the last segment");
+    };
+    
+    // one segment path, the handler is a processor
+    (
+        [$one_seg_path:expr] => ($handler:expr)
+        @
+        ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
+    ) => {
+        if $subject[$depth] == $one_seg_path {
+            return $handler.process($message_input).await;
+        }
+    };
+    
+    // one segment path, the handler is a nested path
+    (
+        [$one_seg_path:expr] => [$([$path:tt] => $handler:tt),+]
+        @
+        ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
+    ) => {
+        if $subject[$depth] == $one_seg_path {
+            nest_route_helper!{
+                [$([$path] => $handler),+]
+                @
+                ($message_input, $depth, $subject, $unexpected_subject_error)
+            }
+        }
+    };
+    
+    // multi segment path, the handler is a processor
+    (
+        [$one_seg_path:expr, $($rest_seg_path:tt),+] => ($handler:expr)
+        @
+        ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
+    ) => {
+        if $subject[$depth] == $one_seg_path {
+            nest_route_helper!{
+                [[$($rest_seg_path),+] => ($handler)]
+                @
+                ($message_input, $depth, $subject, $unexpected_subject_error)
+            }
+        }
+    };
+    
+    // multi segment path, the handler is a nested path
+    (
+        [$one_seg_path:expr, $($rest_seg_path:tt),+] => [$([$path:tt] => $handler:tt),+]
+        @
+        ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
+    ) => {
+        if $subject[$depth] == $one_seg_path {
+            nest_route_helper!{
+                [$($rest_seg_path),+] => [$([$path] => $handler),+]
+                @
+                ($message_input, $depth, $subject, $unexpected_subject_error)
+            }
+        }
+    };
+    
+    // wildcard in the beginning or middle
+    (
+        [*, $($rest_seg_path:tt),+] => [$([$path:tt] => $handler:tt),+]
+        @
+        ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
+    ) => {{
+        nest_route_helper!{
+            [$($rest_seg_path),+] => [$([$path] => $handler),+]
+            @
+            ($message_input, $depth, $subject, $unexpected_subject_error)
+        }
+    }};
+    
+    // recursive wildcard in the beginning or middle
+    // not allowed
+    (
+        [>, $($rest_seg_path:tt),+] => [$([$path:tt] => $handler:tt),+]
+        @
+        ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
+    ) => {
+        compile_error!("Recursive wildcard \">\" must be the last segment");
+    };
+}
+
+#[macro_export(local_inner_macros)]
+#[doc(hidden)]
+/// add the depth by 1 and handle the nested path
+macro_rules! nest_route_helper {
+    {
+        [$(
+            [$($path:tt),*] => $handler:tt
+        ),+]
+        @
+        ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
+    } => {
+        let _depth = $depth + 1;
+        $(
+            path_route_helper![
+                [$($path),*] => $handler 
+                @ 
+                ($message_input, _depth, $subject, $unexpected_subject_error)
+            ]
+        )+;
+        #[allow(unreachable_code)]
+        return $unexpected_subject_error;
+    };
+}
