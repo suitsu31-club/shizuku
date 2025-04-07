@@ -157,19 +157,19 @@ macro_rules! jet_route {
             $crate::error::PreProcessError::UnexpectedSubject(message_input.subject.clone())
         ));
         $(
-            path_route_helper!{
+            ame_bus_jetstream_path_route_helper!{
                 [$($path),+] => $handler @ (message_input, _depth, subject, unexpected_subject_error)
             }
         )+
         #[allow(unreachable_code)]
         return unexpected_subject_error;
-    }}
+    }};
 }
 
 #[macro_export(local_inner_macros)]
 #[doc(hidden)]
 /// handle the path
-macro_rules! path_route_helper {
+macro_rules! ame_bus_jetstream_path_route_helper {
     // ["foo"] => (handler)
     // one segment path, the handler is a processor
     (
@@ -192,7 +192,8 @@ macro_rules! path_route_helper {
     ) => {
         core::assert_ne!(">", $one_seg_path, "Recursive wildcard \">\" must be the last segment");
         if $one_seg_path == "*" || $subject[$depth] == $one_seg_path {
-            nest_route_helper!{
+            ame_bus_jetstream_path_route_helper!{
+                @nest_route
                 [
                     $([$($path),+] => $handler),+
                 ]
@@ -210,7 +211,8 @@ macro_rules! path_route_helper {
     ) => {
         core::assert_ne!(">", $one_seg_path, "Recursive wildcard \">\" must be the last segment");
         if $one_seg_path == "*" || $subject[$depth] == $one_seg_path {
-            nest_route_helper!{
+            ame_bus_jetstream_path_route_helper!{
+                @nest_route
                 [
                     [$($rest_seg_path),+] => ($handler)
                 ]
@@ -230,7 +232,8 @@ macro_rules! path_route_helper {
     ) => {
         core::assert_ne!(">", $one_seg_path, "Recursive wildcard \">\" must be the last segment");
         if $one_seg_path == "*" || $subject[$depth] == $one_seg_path {
-            nest_route_helper!{
+            ame_bus_jetstream_path_route_helper!{
+                @nest_route
                 [
                     [$($rest_seg_path),+] => [$([$($path),+] => $handler),+]
                 ]
@@ -239,29 +242,26 @@ macro_rules! path_route_helper {
             };
         }
     };
-}
-
-#[macro_export(local_inner_macros)]
-#[doc(hidden)]
-/// add the depth by 1 and handle the nested path
-macro_rules! nest_route_helper {
-    {
+    
+    // helper
+    (
+        @nest_route
         [$(
             [ $($path:literal),+ ] => $handler:tt
         ),+]
         @
         ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
-    } => {
+    ) => {
         let _depth = $depth + 1;
         if $subject.len() <= _depth {
             return $unexpected_subject_error;
         }
         $(
-            path_route_helper![
+            ame_bus_jetstream_path_route_helper![
                 [ $($path),+ ] => $handler
                 @
                 ($message_input, _depth, $subject, $unexpected_subject_error)
             ];
         )+
-    };
+    }
 }
