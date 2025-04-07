@@ -298,7 +298,7 @@ macro_rules! path_route_helper {
                 ]
                 @
                 ($message_input, $depth, $subject, $unexpected_subject_error)
-            }
+            };
         }
     };
     
@@ -317,7 +317,7 @@ macro_rules! path_route_helper {
                 ]
                 @
                 ($message_input, $depth, $subject, $unexpected_subject_error)
-            }
+            };
         }
     };
 }
@@ -342,9 +342,7 @@ macro_rules! nest_route_helper {
                 [ $($path),+ ] => $handler
                 @
                 ($message_input, _depth, $subject, $unexpected_subject_error)
-            ]
-        )+;
-        #[allow(unreachable_code)]
-        return $unexpected_subject_error;
+            ];
+        )+
     };
 }
