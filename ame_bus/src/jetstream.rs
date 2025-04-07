@@ -170,63 +170,6 @@ macro_rules! jet_route {
 #[doc(hidden)]
 /// handle the path
 macro_rules! path_route_helper {
-    // ["*"] => (handler)
-    // end with wildcard, the handler is a processor
-    (
-        ["*"] => ($handler:expr)
-        @
-        ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
-    ) => {
-        return $handler.process($message_input).await;
-    };
-    
-    // ["*"] => [
-    //     ["foo1"."bar1"."*"."baz1".>] => (handler1),
-    //     ["foo2"."bar2"."*"."baz2"] => [
-    //         ["foo21"."bar21"."*"."baz21"] => (handler21),
-    //     ],
-    // ]
-    // end with wildcard, the handler is a nested path
-    (
-        ["*"] => [
-            $( [$($path:literal),+] => $handler:tt ),+
-        ]
-        @
-        ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
-    ) => {{
-        nest_route_helper!{
-            [
-                $(
-                    [$($path),+] => $handler
-                ),+
-            ]
-            @
-            ($message_input, $depth, $subject, $unexpected_subject_error)
-        }
-    }};
-    
-    // [">"] => (handler)
-    // recursive wildcard, the handler is a processor
-    (
-        [">"] => ($handler:expr)
-        @
-        ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
-    ) => {
-        return $handler.process($message_input).await;
-    };
-    
-    // when use recursive wildcard, the handler must be a processor
-    // so, there is no need to handle recursive wildcard
-    (
-        [">"] => [
-            $( [$($path:literal),+] => $handler:tt ),+
-        ]
-        @
-        ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
-    ) => {
-        compile_error!("Recursive wildcard \">\" must be the last segment");
-    };
-    
     // ["foo"] => (handler)
     // one segment path, the handler is a processor
     (
@@ -234,7 +177,7 @@ macro_rules! path_route_helper {
         @
         ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
     ) => {
-        if $subject[$depth] == $one_seg_path {
+        if $one_seg_path == "*" || $one_seg_path == ">" || $subject[$depth] == $one_seg_path {
             return $handler.process($message_input).await;
         }
     };
@@ -247,7 +190,8 @@ macro_rules! path_route_helper {
         @
         ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
     ) => {
-        if $subject[$depth] == $one_seg_path {
+        core::assert_ne!(">", $one_seg_path, "Recursive wildcard \">\" must be the last segment");
+        if $one_seg_path == "*" || $subject[$depth] == $one_seg_path {
             nest_route_helper!{
                 [
                     $([$($path),+] => $handler),+
@@ -258,40 +202,14 @@ macro_rules! path_route_helper {
         }
     };
     
-    // wildcard in the beginning or middle
-    (
-        ["*", $($rest_seg_path:literal),+] => [
-            $( [$($path:literal),+] => $handler:tt ),+
-        ]
-        @
-        ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
-    ) => {{
-        nest_route_helper!{
-            [
-                [$($rest_seg_path),+] => [$([$($path),+] => $handler),+]
-            ]
-            @
-            ($message_input, $depth, $subject, $unexpected_subject_error)
-        }
-    }};
-    
-    // recursive wildcard in the beginning or middle
-    // not allowed
-    (
-        [">", $($rest_seg_path:literal),+] => [$([$($path:literal),+] => $handler:tt),+]
-        @
-        ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
-    ) => {
-        compile_error!("Recursive wildcard \">\" must be the last segment");
-    };
-    
     // multi segment path, the handler is a processor
     (
         [$one_seg_path:literal, $($rest_seg_path:literal),+] => ($handler:expr)
         @
         ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
     ) => {
-        if $subject[$depth] == $one_seg_path {
+        core::assert_ne!(">", $one_seg_path, "Recursive wildcard \">\" must be the last segment");
+        if $one_seg_path == "*" || $subject[$depth] == $one_seg_path {
             nest_route_helper!{
                 [
                     [$($rest_seg_path),+] => ($handler)
@@ -310,7 +228,8 @@ macro_rules! path_route_helper {
         @
         ($message_input:expr, $depth: expr, $subject: expr, $unexpected_subject_error: expr)
     ) => {
-        if $subject[$depth] == $one_seg_path {
+        core::assert_ne!(">", $one_seg_path, "Recursive wildcard \">\" must be the last segment");
+        if $one_seg_path == "*" || $subject[$depth] == $one_seg_path {
             nest_route_helper!{
                 [
                     [$($rest_seg_path),+] => [$([$($path),+] => $handler),+]
