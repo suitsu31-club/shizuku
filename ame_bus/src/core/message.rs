@@ -1,11 +1,12 @@
-use std::fmt::Display;
-use crate::error::{DeserializeError, PostProcessError, SerializeError, PreProcessError};
-use async_nats::jetstream::Context;
-use compact_str::CompactString;
-use std::future::Future;
-use std::ops::Deref;
+use crate::error::{DeserializeError, PostProcessError, PreProcessError, SerializeError};
 use async_nats::Subject;
+use async_nats::jetstream::Context;
 use async_nats::subject::ToSubject;
+use compact_str::CompactString;
+use std::fmt::Display;
+use std::future::Future;
+use std::marker::PhantomData;
+use std::ops::Deref;
 // ---------------------------------------------
 
 /// This data can be serialized to bytes.
@@ -64,33 +65,35 @@ impl<T: ByteSerialize + DynamicSubjectMessage> JetStreamMessageSendTrait for T {
 // ---------------------------------------------
 
 /// Message in NATS RPC services.
-pub trait NatsRpcCallTrait<Response: ByteDeserialize>: ByteSerialize + StaticSubjectMessage {
+pub trait NatsRpcCallTrait<Response: ByteDeserialize>: ByteSerialize {
+    /// The subject of the message. Must be static.
+    ///
+    /// A message can be used as multiple RPC calls' request. They can have multiple subjects.
+    /// 
+    /// We bind the response type here as phantom data to ensure the subject is matched.
+    fn subject() -> (NatsSubjectPath, PhantomData<Response>);
+
     #[doc(hidden)]
     /// Call the RPC service and get the response.
-    /// 
+    ///
     /// **DO NOT OVERRIDE THIS FUNCTION.**
     fn call(
         &self,
         nats_connection: &async_nats::Client,
     ) -> impl Future<Output = Result<Response, crate::Error>> + Send {
         async move {
-            let bytes = self.to_bytes()
-                .map_err(|err| PostProcessError::SerializeError(
-                    err.into(),
-                ))
-                .map_err(|err| crate::Error::PostProcessError(err))?;
+            let (subject, _): (_, PhantomData<Response>) = Self::subject();
+            let bytes = self
+                .to_bytes()
+                .map_err(|err| PostProcessError::SerializeError(err.into()))
+                .map_err(crate::Error::PostProcessError)?;
             let response = nats_connection
-                .request(
-                    Self::subject().to_subject(),
-                    bytes.to_vec().into(),
-                )
+                .request(subject, bytes.to_vec().into())
                 .await
-                .map_err(|err| crate::Error::RpcCallRequestError(err))?;
+                .map_err(crate::Error::RpcCallRequestError)?;
             let data = Response::parse_from_bytes(response.payload)
-                .map_err(|err| PreProcessError::DeserializeError(
-                    err.into(),
-                ))
-                .map_err(|err| crate::Error::PreProcessError(err))?;
+                .map_err(|err| PreProcessError::DeserializeError(err.into()))
+                .map_err(crate::Error::PreProcessError)?;
             Ok(data)
         }
     }
@@ -136,13 +139,25 @@ impl From<Vec<CompactString>> for NatsSubjectPath {
 
 impl From<Vec<&str>> for NatsSubjectPath {
     fn from(value: Vec<&str>) -> Self {
-        Self(value.into_iter().map(|s| CompactString::new(s)).collect::<Vec<_>>().into_boxed_slice())
+        Self(
+            value
+                .into_iter()
+                .map(|s| CompactString::new(s))
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+        )
     }
 }
 
 impl From<Vec<String>> for NatsSubjectPath {
     fn from(value: Vec<String>) -> Self {
-        Self(value.into_iter().map(|s| CompactString::new(s)).collect::<Vec<_>>().into_boxed_slice())
+        Self(
+            value
+                .into_iter()
+                .map(|s| CompactString::new(s))
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+        )
     }
 }
 
@@ -223,7 +238,7 @@ impl From<Vec<SubjectMatcherField>> for SubjectMatcher {
 
 impl SubjectMatcher {
     /// Checks if a NATS subject matches this matcher pattern
-    /// 
+    ///
     /// For example:
     /// - "foo.bar.baz" matches "foo.bar.baz"
     /// - "foo.bar.baz" matches "foo.*.baz"
@@ -231,28 +246,28 @@ impl SubjectMatcher {
     /// - "foo.bar.baz" does not match "foo.bar"
     /// - "foo.bar.baz" does not match "foo.*"
     /// - "foo.bar2.baz" matches "foo.*.baz"
-    /// 
+    ///
     /// ```rust
     /// # use ame_bus::subject_matcher;
     /// # use ame_bus::core::message::NatsSubjectPath;
-    /// 
+    ///
     /// let path = NatsSubjectPath::from(vec!["foo", "bar", "baz"]);
-    /// 
+    ///
     /// let matcher = subject_matcher!["foo", "bar", "baz"];
     /// assert!(matcher.matches(&path));
-    /// 
+    ///
     /// let matcher = subject_matcher!["foo", "*", "baz"];
     /// assert!(matcher.matches(&path));
-    /// 
+    ///
     /// let matcher = subject_matcher!["foo", "bar"];
     /// assert!(!matcher.matches(&path));
-    /// 
+    ///
     /// let matcher = subject_matcher!["foo", "*"];
     /// assert!(!matcher.matches(&path));
-    /// 
+    ///
     /// let matcher = subject_matcher!["foo", ">"];
     /// assert!(matcher.matches(&path));
-    /// 
+    ///
     /// let path = NatsSubjectPath::from(vec!["foo", "bar2", "baz"]);
     /// let matcher = subject_matcher!["foo", "*", "baz"];
     /// assert!(matcher.matches(&path));
@@ -260,7 +275,7 @@ impl SubjectMatcher {
     pub fn matches(&self, subject: &NatsSubjectPath) -> bool {
         let subject = &**subject;
         let matcher = &**self;
-        
+
         // Early return if subject has fewer segments than matcher
         // e.g. "foo" cannot match "foo.bar"
         if subject.len() < matcher.len() {
@@ -270,10 +285,12 @@ impl SubjectMatcher {
         // Early return if subject has more segments than matcher,
         // unless matcher ends with '>' (recursive wildcard)
         // e.g. "foo.bar.baz" cannot match "foo.bar", but can match "foo.>"
-        if subject.len() > matcher.len() && matcher.last() != Some(&SubjectMatcherField::RecursiveWildcard) {
+        if subject.len() > matcher.len()
+            && matcher.last() != Some(&SubjectMatcherField::RecursiveWildcard)
+        {
             return false;
         }
-        
+
         let len = matcher.len();
         for i in 0..len {
             match matcher[i] {
@@ -301,27 +318,27 @@ impl SubjectMatcher {
 }
 
 /// Creates a `SubjectMatcher` from a sequence of tokens.
-/// 
+///
 /// Syntax:
 /// - Static segments: string literals or identifiers
 /// - "*": single-level wildcard
 /// - ">": multi-level wildcard (must be last)
-/// 
+///
 /// Examples:
 /// ```
 /// # use ame_bus::subject_matcher;
 /// # use ame_bus::core::message::SubjectMatcherField;
-/// 
+///
 /// let matcher = subject_matcher!["foo", "*", "bar"];  // matches "foo.{any}.bar"
 /// assert_eq!(
-///     matcher, 
+///     matcher,
 ///     vec![
 ///         SubjectMatcherField::Static("foo".into()),
 ///         SubjectMatcherField::Wildcard,
 ///         SubjectMatcherField::Static("bar".into()),
 ///     ].into()
 /// );
-/// 
+///
 /// let matcher = subject_matcher!["foo", "bar", ">"];  // matches "foo.bar.{anything...}"
 /// assert_eq!(
 ///     matcher,
@@ -330,7 +347,7 @@ impl SubjectMatcher {
 ///         SubjectMatcherField::Static("bar".into()),
 ///         SubjectMatcherField::RecursiveWildcard,
 ///     ].into()
-/// ); 
+/// );
 ///
 /// ```
 #[macro_export]
@@ -359,11 +376,11 @@ macro_rules! subject_matcher {
         let recursive_count = segments.iter()
             .filter(|s| matches!(s, SubjectMatcherField::RecursiveWildcard))
             .count();
-        
+
         if recursive_count > 1 {
             panic!("Multiple '>' wildcards are not allowed in subject matcher");
         }
-        
+
         if recursive_count == 1 && !matches!(segments.last(), Some(SubjectMatcherField::RecursiveWildcard)) {
             panic!("'>' wildcard must be the last segment in subject matcher");
         }
