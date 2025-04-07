@@ -304,7 +304,7 @@ macro_rules! subject_matcher {
     };
 
     // Match array of tokens
-    [$($segment:tt),* $(,)?] => {{
+    [$($segment:expr),* $(,)?] => {{
         use $crate::core::message::SubjectMatcherField;
         use compact_str::CompactString;
 
