@@ -123,6 +123,9 @@ pub enum Error {
     /// Error after business logic.
     PostProcessError(PostProcessError),
     
+    /// Error when calling RPC service.
+    RpcCallRequestError(async_nats::client::RequestError),
+    
     /// Custom error.
     Custom(anyhow::Error),
 }
@@ -137,6 +140,7 @@ impl Display for Error {
             },
             Error::BusinessPanicError(err) => write!(f, "Business logic panic error:\n {}", err),
             Error::PostProcessError(err) => write!(f, "Failed to postprocess message:\n {}", err),
+            Error::RpcCallRequestError(err) => write!(f, "Failed to call RPC service:\n {}", err),
             Error::Custom(err) => write!(f, "Custom error:\n {}", err),
         }
     }

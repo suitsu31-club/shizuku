@@ -1,5 +1,5 @@
 use std::fmt::Display;
-use crate::error::{DeserializeError, PostProcessError, SerializeError};
+use crate::error::{DeserializeError, PostProcessError, SerializeError, PreProcessError};
 use async_nats::jetstream::Context;
 use compact_str::CompactString;
 use std::future::Future;
@@ -55,6 +55,43 @@ pub trait JetStreamMessageSendTrait: ByteSerialize + DynamicSubjectMessage {
                 )
                 .await?;
             Ok(())
+        }
+    }
+}
+
+impl<T: ByteSerialize + DynamicSubjectMessage> JetStreamMessageSendTrait for T {}
+
+// ---------------------------------------------
+
+/// Message in NATS RPC services.
+pub trait NatsRpcCallTrait<Response: ByteDeserialize>: ByteSerialize + StaticSubjectMessage {
+    #[doc(hidden)]
+    /// Call the RPC service and get the response.
+    /// 
+    /// **DO NOT OVERRIDE THIS FUNCTION.**
+    fn call(
+        &self,
+        nats_connection: &async_nats::Client,
+    ) -> impl Future<Output = Result<Response, crate::Error>> + Send {
+        async move {
+            let bytes = self.to_bytes()
+                .map_err(|err| PostProcessError::SerializeError(
+                    err.into(),
+                ))
+                .map_err(|err| crate::Error::PostProcessError(err))?;
+            let response = nats_connection
+                .request(
+                    Self::subject().to_subject(),
+                    bytes.to_vec().into(),
+                )
+                .await
+                .map_err(|err| crate::Error::RpcCallRequestError(err))?;
+            let data = Response::parse_from_bytes(response.payload)
+                .map_err(|err| PreProcessError::DeserializeError(
+                    err.into(),
+                ))
+                .map_err(|err| crate::Error::PreProcessError(err))?;
+            Ok(data)
         }
     }
 }
