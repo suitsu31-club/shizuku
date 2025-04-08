@@ -4,6 +4,7 @@ use crate::{ByteDeserialize, ByteSerialize};
 use async_nats::jetstream::kv;
 use async_nats::jetstream::kv::{Entry, EntryError, Store};
 use std::fmt::{Debug, Display, Formatter};
+use crate::error::{DeserializeError, SerializeError};
 
 /// A value in KV store that has a static key.
 pub trait StaticKeyIndexedValue {
@@ -275,5 +276,117 @@ where
                 .await?;
             Ok(new_version)
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DistroRwLock {
+    pub mode: DistroRwLockMode,
+    pub readers: u64,
+    pub writer_waiting: bool,
+}
+
+/// The current mode of the lock.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DistroRwLockMode {
+    /// the lock is held by a reader
+    Read,
+    
+    /// the lock is held by a writer
+    Write,
+    
+    /// the lock is not held
+    Idle,
+}
+
+/// Error when serializing the lock state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DistroRwLockSerErr {}
+
+impl Display for DistroRwLockSerErr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Failed to serialize lock state")
+    }
+}
+
+impl std::error::Error for DistroRwLockSerErr {}
+
+impl From<DistroRwLockSerErr> for SerializeError {
+    fn from(err: DistroRwLockSerErr) -> Self {
+        SerializeError(anyhow::Error::new(err))
+    }
+}
+
+/// Error when deserializing the lock state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DistroRwLockDesErr {
+    /// the length of the bytes is not 9
+    InvalidLength,
+    /// the first byte is not `0b000`, `0b001`, `0b010`, `0b100`, `0b101`, `0b110`
+    UnexpectedState,
+}
+
+impl Display for DistroRwLockDesErr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DistroRwLockDesErr::InvalidLength => write!(f, "Invalid length"),
+            DistroRwLockDesErr::UnexpectedState => write!(f, "Unexpected state"),
+        }
+    }
+}
+
+impl std::error::Error for DistroRwLockDesErr {}
+
+impl From<DistroRwLockDesErr> for DeserializeError {
+    fn from(err: DistroRwLockDesErr) -> Self {
+        DeserializeError(anyhow::Error::new(err))
+    }
+}
+
+impl ByteSerialize for DistroRwLock {
+    type SerError = DistroRwLockSerErr;
+
+    fn to_bytes(&self) -> Result<Box<[u8]>, Self::SerError> {
+        let mut bytes: [u8; 9] = [0b00000000; 9];
+        match (&self.writer_waiting, &self.mode) {
+            (false, DistroRwLockMode::Idle) => bytes[0] = 0b000,
+            (false, DistroRwLockMode::Read) => bytes[0] = 0b001,
+            (false, DistroRwLockMode::Write) => bytes[0] = 0b010,
+            (true, DistroRwLockMode::Idle) => bytes[0] = 0b100,
+            (true, DistroRwLockMode::Read) => bytes[0] = 0b101,
+            (true, DistroRwLockMode::Write) => bytes[0] = 0b110,
+        }
+        bytes[1..9].copy_from_slice(&self.readers.to_be_bytes());
+        Ok(bytes.into())
+    }
+}
+
+impl ByteDeserialize for DistroRwLock {
+    type DeError = DistroRwLockDesErr;
+
+    fn parse_from_bytes(bytes: impl AsRef<[u8]>) -> Result<Self, Self::DeError> {
+        let bytes = bytes.as_ref();
+        if bytes.len() != 9 {
+            return Err(DistroRwLockDesErr::InvalidLength);
+        }
+
+        let state = bytes[0];
+        let (writer_waiting, mode) = match state {
+            0b000 => (false, DistroRwLockMode::Idle),
+            0b001 => (false, DistroRwLockMode::Read),
+            0b010 => (false, DistroRwLockMode::Write),
+            0b100 => (true, DistroRwLockMode::Idle),
+            0b101 => (true, DistroRwLockMode::Read),
+            0b110 => (true, DistroRwLockMode::Write),
+            _ => return Err(DistroRwLockDesErr::UnexpectedState),
+        };
+
+        let readers = u64::from_be_bytes(bytes[1..9].try_into().unwrap());
+
+        Ok(Self {
+            mode,
+            readers,
+            writer_waiting,
+        })
     }
 }
