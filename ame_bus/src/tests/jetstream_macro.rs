@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 use std::sync::Arc;
 use crate::jetstream::FinalJetStreamProcessor;
 use crate::{jet_route, Error, Processor};

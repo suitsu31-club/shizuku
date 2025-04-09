@@ -308,7 +308,7 @@ impl SubjectMatcher {
                 // Must be the last segment in matcher pattern
                 SubjectMatcherField::RecursiveWildcard => {
                     if i != len - 1 {
-                        panic!("Recursive wildcard must be the last field");
+                        unreachable!("Recursive wildcard must be the last field");
                     }
                 }
             }

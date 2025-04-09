@@ -1,5 +1,8 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 #![warn(missing_docs)]
+#![deny(clippy::unwrap_used)]
+#![deny(clippy::expect_used)]
+#![deny(clippy::panic)]
 #![doc = include_str!("../README.md")]
 
 /// Core of Ame Bus.

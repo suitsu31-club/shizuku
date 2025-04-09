@@ -208,7 +208,9 @@ impl ByteDeserialize for DistroRwLockValue {
             _ => return Err(DistroRwLockDesErr::BadByteValue),
         };
 
-        let readers = u64::from_be_bytes(bytes[1..9].try_into().unwrap());
+        let readers = u64::from_be_bytes(bytes[1..9].try_into().map_err(|_| {
+            DistroRwLockDesErr::InvalidByteLength
+        })?);
 
         Ok(Self {
             mode,
