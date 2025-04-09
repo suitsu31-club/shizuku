@@ -2,9 +2,12 @@ use crate::kv::kv::WatchError;
 use crate::kv::kv::Watch;
 use crate::{ByteDeserialize, ByteSerialize};
 use async_nats::jetstream::kv;
-use async_nats::jetstream::kv::{Entry, EntryError, Store};
+use async_nats::jetstream::kv::{Entry, EntryError, Store, UpdateError, UpdateErrorKind};
 use std::fmt::{Debug, Display, Formatter};
+use std::time::Duration;
 use crate::error::{DeserializeError, SerializeError};
+
+// ---------------------------------------------
 
 /// A value in KV store that has a static key.
 pub trait StaticKeyIndexedValue {
@@ -96,6 +99,8 @@ pub trait KeyValue: Sized + Send + Sync {
     }
 }
 
+// ---------------------------------------------
+
 /// Result from atomic read or history read
 pub struct KvEntry<V: ByteDeserialize> {
     /// Name of the bucket the entry is in.
@@ -140,9 +145,14 @@ impl<V: ByteDeserialize> TryFrom<Entry> for KvEntry<V> {
     }
 }
 
+// ---------------------------------------------
+
 #[derive(Debug)]
-enum KvReadError<V: ByteDeserialize> {
+/// Error when reading from KV store.
+pub enum KvReadError<V: ByteDeserialize> {
+    /// Error when reading from KV store.
     EntryError(EntryError),
+    /// Error when deserializing the value.
     DeserializeError(V::DeError),
 }
 
@@ -241,6 +251,45 @@ impl<T: KeyValue> KeyValueRead for T
         T::Key: Clone,
 {}
 
+// ---------------------------------------------
+
+#[derive(Debug)]
+/// Error when writing to KV store.
+pub enum KvWriteError<V: ByteSerialize> {
+    /// Error when writing to KV store atomically.
+    UpdateError(UpdateError),
+    
+    /// Error when writing to KV store.
+    PutError(async_nats::Error),
+    
+    /// Error when serializing the value.
+    SerializeError(V::SerError),
+}
+
+impl<V: ByteSerialize> From<UpdateError> for KvWriteError<V> {
+    fn from(err: UpdateError) -> Self {
+        Self::UpdateError(err)
+    }
+}
+
+impl<V: ByteSerialize> From<async_nats::Error> for KvWriteError<V> {
+    fn from(err: async_nats::Error) -> Self {
+        Self::PutError(err)
+    }
+}
+
+impl<V: ByteSerialize> Display for KvWriteError<V> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UpdateError(err) => write!(f, "Update error: {}", err),
+            Self::PutError(err) => write!(f, "Put error: {}", err),
+            Self::SerializeError(err) => write!(f, "Serialize error: {}", err),
+        }
+    }
+}
+
+impl<V: ByteSerialize + Debug> std::error::Error for KvWriteError<V> {}
+
 /// A value that can be written to KV store.
 pub trait KeyValueWrite: KeyValue
 where
@@ -251,43 +300,81 @@ where
     fn write_to_anyway(
         &self,
         store: &Store,
-    ) -> impl Future<Output = Result<(), async_nats::Error>> + Send {
+    ) -> impl Future<Output = Result<(), KvWriteError<Self::Value>>> + Send {
         async move {
             let key: String = self.key().into();
-            store
-                .put(key, self.value().to_bytes()?.into())
-                .await?;
+            let bytes = self.value().to_bytes()
+                .map_err(KvWriteError::SerializeError)?;
+            store.put(key, bytes.into())
+                .await
+                .map_err(|e| KvWriteError::UpdateError(e))?;
             Ok(())
         }
     }
     
     /// Write the value to the store atomically.
     /// 
-    /// The `revision` is the expected revision of the value. If the revision is not matched, the write will fail.
+    /// The `revision` is the expected revision of the value. If the revision is not matched, the write will fail and return `Ok(None)`.
     fn write_to_atomically(
         &self,
         store: &Store,
         revision: u64,
-    ) -> impl Future<Output = Result<u64, async_nats::Error>> + Send {
+    ) -> impl Future<Output = Result<Option<u64>, KvWriteError<Self::Value>>> + Send {
         async move {
             let key: String = self.key().into();
+            let bytes = self.value().to_bytes()
+                .map_err(KvWriteError::SerializeError)?;
             let new_version = store
-                .update(key, self.value().to_bytes()?.into(), revision)
-                .await?;
-            Ok(new_version)
+                .update(key, bytes.into(), revision)
+                .await;
+            match new_version {
+                Ok(new_version) => Ok(Some(new_version)),
+                Err(err) if err.kind() == UpdateErrorKind::WrongLastRevision => Ok(None),
+                Err(err) => Err(KvWriteError::UpdateError(err)),
+            }
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct DistroRwLock {
+impl<T: KeyValue> KeyValueWrite for T 
+    where
+        T::Value: ByteSerialize,
+        T::Key: Into<String> + Send + Sync + Sized,
+{}
+
+// ---------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+/// The Kernel of [DistroRwLock]
+pub struct DistroRwLockValue {
+    /// The current mode of the lock.
     pub mode: DistroRwLockMode,
+    
+    /// The number of readers.
     pub readers: u64,
+    
+    /// Whether there is a writer waiting.
     pub writer_waiting: bool,
 }
 
+impl DistroRwLockValue {
+    /// Create a new lock.
+    pub fn new() -> Self {
+        Self::default()
+    }
+    
+    /// Update the lock into a read acquired state.
+    pub fn into_read_acquired(self) -> Self {
+        Self {
+            mode: DistroRwLockMode::Read,
+            readers: self.readers + 1,
+            writer_waiting: self.writer_waiting,
+        }
+    }
+}
+
 /// The current mode of the lock.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DistroRwLockMode {
     /// the lock is held by a reader
     Read,
@@ -295,8 +382,43 @@ pub enum DistroRwLockMode {
     /// the lock is held by a writer
     Write,
     
+    #[default]
     /// the lock is not held
     Idle,
+}
+
+#[derive(Debug)]
+pub enum DistroRwLockAcquireError {
+    /// the length of the bytes is not 9
+    InvalidByteLength,
+    
+    /// the first byte is not `0b000`, `0b001`, `0b010`, `0b100`, `0b101`, `0b110`
+    BadByteValue,
+    
+    /// the read failed and unable to recover
+    ReadFailed(async_nats::Error),
+    
+    /// the update failed
+    UpdateFailed(async_nats::Error),
+}
+
+impl Display for DistroRwLockAcquireError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DistroRwLockAcquireError::InvalidByteLength => write!(f, "Invalid byte length"),
+            DistroRwLockAcquireError::BadByteValue => write!(f, "Bad byte value"),
+            DistroRwLockAcquireError::ReadFailed(err) => write!(f, "Read failed: {}", err),
+            DistroRwLockAcquireError::UpdateFailed(err) => write!(f, "Update failed: {}", err), 
+        }
+    }
+}
+
+impl std::error::Error for DistroRwLockAcquireError {}
+
+impl From<DistroRwLockAcquireError> for DeserializeError {
+    fn from(err: DistroRwLockAcquireError) -> Self {
+        DeserializeError(anyhow::Error::new(err))
+    }
 }
 
 /// Error when serializing the lock state.
@@ -317,33 +439,8 @@ impl From<DistroRwLockSerErr> for SerializeError {
     }
 }
 
-/// Error when deserializing the lock state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DistroRwLockDesErr {
-    /// the length of the bytes is not 9
-    InvalidLength,
-    /// the first byte is not `0b000`, `0b001`, `0b010`, `0b100`, `0b101`, `0b110`
-    UnexpectedState,
-}
 
-impl Display for DistroRwLockDesErr {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DistroRwLockDesErr::InvalidLength => write!(f, "Invalid length"),
-            DistroRwLockDesErr::UnexpectedState => write!(f, "Unexpected state"),
-        }
-    }
-}
-
-impl std::error::Error for DistroRwLockDesErr {}
-
-impl From<DistroRwLockDesErr> for DeserializeError {
-    fn from(err: DistroRwLockDesErr) -> Self {
-        DeserializeError(anyhow::Error::new(err))
-    }
-}
-
-impl ByteSerialize for DistroRwLock {
+impl ByteSerialize for DistroRwLockValue {
     type SerError = DistroRwLockSerErr;
 
     fn to_bytes(&self) -> Result<Box<[u8]>, Self::SerError> {
@@ -361,13 +458,13 @@ impl ByteSerialize for DistroRwLock {
     }
 }
 
-impl ByteDeserialize for DistroRwLock {
-    type DeError = DistroRwLockDesErr;
+impl ByteDeserialize for DistroRwLockValue {
+    type DeError = DistroRwLockAcquireError; 
 
     fn parse_from_bytes(bytes: impl AsRef<[u8]>) -> Result<Self, Self::DeError> {
         let bytes = bytes.as_ref();
         if bytes.len() != 9 {
-            return Err(DistroRwLockDesErr::InvalidLength);
+            return Err(DistroRwLockAcquireError::InvalidByteLength);
         }
 
         let state = bytes[0];
@@ -378,7 +475,7 @@ impl ByteDeserialize for DistroRwLock {
             0b100 => (true, DistroRwLockMode::Idle),
             0b101 => (true, DistroRwLockMode::Read),
             0b110 => (true, DistroRwLockMode::Write),
-            _ => return Err(DistroRwLockDesErr::UnexpectedState),
+            _ => return Err(DistroRwLockAcquireError::BadByteValue),
         };
 
         let readers = u64::from_be_bytes(bytes[1..9].try_into().unwrap());
@@ -388,5 +485,81 @@ impl ByteDeserialize for DistroRwLock {
             readers,
             writer_waiting,
         })
+    }
+}
+
+#[derive(Debug, Clone)]
+/// A distributed read-write lock.
+///
+/// 1. It allows multiple read requests of a resource but only one write request.
+/// 2. Writing first. If there is a writer waiting, new read request cannot get the lock.
+pub struct DistroRwLock {
+    key: String,
+    value: DistroRwLockValue,
+}
+
+impl KeyValue for DistroRwLock {
+    type Key = String; 
+    type Value = DistroRwLockValue;
+
+    fn key(&self) -> Self::Key {
+        self.key.clone()
+    }
+
+    fn value(&self) -> Self::Value {
+        self.value
+    }
+
+    fn into_value(self) -> Self::Value {
+        self.value
+    }
+
+    fn new(key: Self::Key, value: Self::Value) -> Self {
+        Self { key, value }
+    }
+}
+
+impl DistroRwLock {
+    pub async fn acquire_read(store: &Store, key: impl AsRef<str>) -> Result<bool, DistroRwLockAcquireError> {
+        loop {
+            let entry = Self::atomic_read_from(
+                store,
+                key.as_ref().to_string(),
+            ).await
+                .map_err(DistroRwLockAcquireError::ReadFailed)?;
+            
+            if let Some(entry) = entry {
+                let lock = entry.value;
+                let lock_mode = lock.mode;
+                
+                // block if writer active or waiting.
+                // wait the writer to finish.
+                if lock_mode == DistroRwLockMode::Write || lock.writer_waiting {
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    continue;
+                }
+                
+                // if no block, try to acquire the read lock
+                let updated = lock.into_read_acquired();
+                let updated = Self::new(key.as_ref().to_string(), updated);
+                let reversion_result = updated
+                    .write_to_atomically(store, entry.revision)
+                    .await;
+                match reversion_result {
+                    Ok(Some(_)) => return Ok(true),
+                    Ok(None) => {
+                        tokio::time::sleep(Duration::from_millis(50)).await;
+                        continue;
+                    },
+                    Err(_) => {
+                        return Err(DistroRwLockAcquireError::UpdateFailed); 
+                    },
+                }
+                
+                
+            } else { 
+                // create and hold the lock
+            }
+        } 
     }
 }
