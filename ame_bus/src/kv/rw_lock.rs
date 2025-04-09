@@ -516,7 +516,7 @@ impl Display for WithLockProcessError {
 
 impl std::error::Error for WithLockProcessError {}
 
-/// A wrapper around a [Processor] that acquires a lock to read the resource before processing and releases it after.
+/// A RAII wrapper around a [Processor] that acquires a lock to read the resource before processing and releases it after.
 pub struct LockedResourceReadProcessor<I, O, P, K> 
 where 
     P: Processor<I, O> + Send + Sync,
@@ -569,7 +569,7 @@ where
     }
 }
 
-/// A wrapper around a [Processor] that acquires a lock to write the resource before processing and releases it after.
+/// A RAII wrapper around a [Processor] that acquires a lock to write the resource before processing and releases it after.
 pub struct LockedResourceWriteProcessor<I, O, P, K> 
 where 
     P: Processor<I, O> + Send + Sync,
