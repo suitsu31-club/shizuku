@@ -6,7 +6,7 @@ use crate::kv::kv::WatchError;
 use crate::{ByteDeserialize, ByteSerialize};
 use async_nats::jetstream::kv;
 use async_nats::jetstream::kv::{
-    CreateError, CreateErrorKind, Entry, EntryError, PutError, Store, UpdateError, UpdateErrorKind,
+    CreateError, Entry, EntryError, PutError, Store, UpdateError, UpdateErrorKind,
 };
 use std::fmt::{Debug, Display, Formatter};
 

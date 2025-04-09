@@ -1,10 +1,12 @@
-use std::fmt::{Display, Formatter};
-use std::time::Duration;
+use crate::error::{DeserializeError, SerializeError};
+use crate::kv::{KeyValue, KeyValueRead, KeyValueWrite, KvReadError, KvWriteError};
+use crate::{ByteDeserialize, ByteSerialize, Processor};
 use async_nats::jetstream::kv::{CreateErrorKind, Store};
 use rand::Rng;
-use crate::{ByteDeserialize, ByteSerialize};
-use crate::error::{DeserializeError, SerializeError};
-use crate::kv::{KeyValue, KvReadError, KvWriteError, KeyValueRead, KeyValueWrite};
+use std::fmt::{Display, Formatter};
+use std::marker::PhantomData;
+use std::sync::Arc;
+use std::time::Duration;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 /// The Kernel of [DistroRwLock]
@@ -40,12 +42,16 @@ impl DistroRwLockValue {
     pub fn into_read_released(self) -> Self {
         let new_readers = self.readers - 1;
         Self {
-            mode: if new_readers > 0 { DistroRwLockMode::Read } else { DistroRwLockMode::Idle },
+            mode: if new_readers > 0 {
+                DistroRwLockMode::Read
+            } else {
+                DistroRwLockMode::Idle
+            },
             readers: new_readers,
             writer_waiting: self.writer_waiting,
         }
     }
-    
+
     /// Update whether there is a writer waiting.
     #[inline]
     pub fn into_waiting(self, writer_waiting: bool) -> Self {
@@ -55,7 +61,7 @@ impl DistroRwLockValue {
             writer_waiting,
         }
     }
-    
+
     /// Update the lock into a write acquired state.
     #[inline]
     pub fn into_write_acquired(self) -> Self {
@@ -65,7 +71,7 @@ impl DistroRwLockValue {
             writer_waiting: false,
         }
     }
-    
+
     /// Update the lock into a write released state.
     pub fn into_write_released(self) -> Self {
         Self {
@@ -275,7 +281,7 @@ impl DistroRwLock {
 
                     // database is uploaded by others, try again.
                     Ok(None) => {
-                        random_sleep(20, 70).await; 
+                        random_sleep(20, 70).await;
                         continue;
                     }
 
@@ -298,10 +304,10 @@ impl DistroRwLock {
 
                     // someone else created the lock, try again.
                     Err(KvWriteError::CreateError(create_err))
-                    if create_err.kind() == CreateErrorKind::AlreadyExists =>
-                        {
-                            continue;
-                        }
+                        if create_err.kind() == CreateErrorKind::AlreadyExists =>
+                    {
+                        continue;
+                    }
 
                     // connection error or other error than unable to recover
                     Err(err) => return Err(DistroRwLockError::UpdateFailed(err)),
@@ -319,7 +325,7 @@ impl DistroRwLock {
             let entry = Self::atomic_read_from(store, key.as_ref().to_string())
                 .await
                 .map_err(DistroRwLockError::ReadFailed)?;
-            
+
             // if we can release a lock, it must be already created
             let Some(entry) = entry else {
                 return Err(DistroRwLockError::UnexpectedMissingValue);
@@ -350,9 +356,9 @@ impl DistroRwLock {
             }
         }
     }
-    
+
     /// Set waiter waiting flag.
-    /// 
+    ///
     /// If the entry does not exist, it will be created with the flag.
     pub async fn set_writer_waiting(
         store: &Store,
@@ -363,7 +369,7 @@ impl DistroRwLock {
             let entry = Self::atomic_read_from(store, key.as_ref().to_string())
                 .await
                 .map_err(DistroRwLockError::ReadFailed)?;
-            
+
             // if the entry exists, update the value
             if let Some(entry) = entry {
                 let lock = entry.value;
@@ -383,40 +389,40 @@ impl DistroRwLock {
                     // someone else created the lock, try again.
                     Err(KvWriteError::CreateError(create_err))
                         if create_err.kind() == CreateErrorKind::AlreadyExists =>
-                        {
-                            continue;
-                        }
+                    {
+                        continue;
+                    }
                     Err(err) => return Err(DistroRwLockError::UpdateFailed(err)),
                 }
             };
         }
     }
-    
+
     /// Try to acquire the write lock.
     pub async fn acquire_write(
         store: &Store,
         key: impl AsRef<str>,
     ) -> Result<(), DistroRwLockError> {
         Self::set_writer_waiting(store, key.as_ref(), true).await?;
-        
+
         loop {
             let entry = Self::atomic_read_from(store, key.as_ref().to_string())
                 .await
                 .map_err(DistroRwLockError::ReadFailed)?;
-            
+
             // we created the entry in `set_writer_waiting`, so if it is None, it is unexpected
             let Some(entry) = entry else {
                 return Err(DistroRwLockError::UnexpectedMissingValue);
             };
-            
+
             let lock = entry.value;
-            
+
             // if there is reader, wait
             if lock.mode == DistroRwLockMode::Write || lock.readers > 0 {
                 random_sleep(50, 120).await;
                 continue;
             }
-            
+
             let updated = lock.into_write_acquired();
             let updated = Self::new(key.as_ref().to_string(), updated);
             let reversion_result = updated.write_to_atomically(store, entry.revision).await;
@@ -437,7 +443,7 @@ impl DistroRwLock {
             }
         }
     }
-    
+
     /// Release the write lock.
     pub async fn release_write(
         store: &Store,
@@ -447,17 +453,17 @@ impl DistroRwLock {
             let entry = Self::atomic_read_from(store, key.as_ref().to_string())
                 .await
                 .map_err(DistroRwLockError::ReadFailed)?;
-            
+
             // if we can release a lock, it must be already created
             let Some(entry) = entry else {
                 return Err(DistroRwLockError::UnexpectedMissingValue);
             };
-            
+
             let lock = entry.value;
             if lock.mode != DistroRwLockMode::Write {
                 return Err(DistroRwLockError::AlreadyReleased);
             }
-            
+
             let updated = lock.into_write_released();
             let updated = Self::new(key.as_ref().to_string(), updated);
             let reversion_result = updated.write_to_atomically(store, entry.revision).await;
@@ -486,3 +492,134 @@ async fn random_sleep(min_ms: u64, max_ms: u64) {
     let sleep_time = rand::rng().random_range(min_ms..max_ms);
     tokio::time::sleep(Duration::from_millis(sleep_time)).await;
 }
+
+#[derive(Debug)]
+/// The error result of [LockedResourceReadProcessor] and [LockedResourceWriteProcessor]
+pub enum WithLockProcessError {
+    /// The error when try to acquire or release the lock.
+    FailOnAcquire(DistroRwLockError),
+
+    /// The error when try to acquire or release the lock.
+    FailOnRelease(DistroRwLockError),
+}
+
+impl Display for WithLockProcessError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::FailOnAcquire(err) => write!(f, "Failed to acquire lock: {}", err),
+            Self::FailOnRelease(err) => write!(f, "Failed to release lock: {}", err),
+        }
+    }
+}
+
+impl std::error::Error for WithLockProcessError {}
+
+/// A wrapper around a [Processor] that acquires a lock to read the resource before processing and releases it after.
+pub struct LockedResourceReadProcessor<I, O, P, K> 
+where 
+    P: Processor<I, O> + Send + Sync,
+    K: AsRef<str> + Send + Sync,
+    I: Send + Sync,
+    O: Send + Sync,
+{
+    processor: Arc<P>,
+    store: &'static Store,
+    key: K,
+    phantom_input: PhantomData<I>,
+    phantom_output: PhantomData<O>,
+}
+
+impl<I,O,P,K> Processor<I, Result<O, WithLockProcessError>> for LockedResourceReadProcessor<I, O, P, K>
+where 
+    P: Processor<I, O> + Send + Sync,
+    K: AsRef<str> + Send + Sync,
+    I: Send + Sync,
+    O: Send + Sync,
+{
+    async fn process(&self, input: I) -> Result<O, WithLockProcessError> {
+        DistroRwLock::acquire_read(self.store, self.key.as_ref())
+            .await
+            .map_err(WithLockProcessError::FailOnAcquire)?;
+        let result = self.processor.process(input).await;
+        DistroRwLock::release_read(self.store, self.key.as_ref())
+            .await
+            .map_err(WithLockProcessError::FailOnRelease)?;
+        Ok(result)
+    }
+}
+
+impl<I,O,P,K> LockedResourceReadProcessor<I,O,P,K>
+where 
+    P: Processor<I, O> + Send + Sync,
+    K: AsRef<str> + Send + Sync,
+    I: Send + Sync,
+    O: Send + Sync,
+{
+    /// Create a new [LockedResourceReadProcessor]
+    pub fn new(processor: Arc<P>, store: &'static Store, key: K) -> Self {
+        Self {
+            processor,
+            store,
+            key,
+            phantom_input: PhantomData,
+            phantom_output: PhantomData,
+        }
+    }
+}
+
+/// A wrapper around a [Processor] that acquires a lock to write the resource before processing and releases it after.
+pub struct LockedResourceWriteProcessor<I, O, P, K> 
+where 
+    P: Processor<I, O> + Send + Sync,
+    K: AsRef<str> + Send + Sync,
+    I: Send + Sync,
+    O: Send + Sync,
+{
+    processor: Arc<P>,
+    store: &'static Store,
+    key: K,
+    phantom_input: PhantomData<I>,
+    phantom_output: PhantomData<O>,
+}
+
+impl<I,O,P,K> Processor<I, Result<O, WithLockProcessError>> for LockedResourceWriteProcessor<I, O, P, K>
+where 
+    P: Processor<I, O> + Send + Sync,
+    K: AsRef<str> + Send + Sync,
+    I: Send + Sync,
+    O: Send + Sync,
+{
+    async fn process(&self, input: I) -> Result<O, WithLockProcessError> {
+        DistroRwLock::acquire_write(self.store, self.key.as_ref())
+            .await
+            .map_err(WithLockProcessError::FailOnAcquire)?;
+        
+        let result = self.processor.process(input).await;
+        
+        DistroRwLock::release_write(self.store, self.key.as_ref())
+            .await
+            .map_err(WithLockProcessError::FailOnRelease)?;
+            
+        Ok(result)
+    }
+}
+
+impl<I,O,P,K> LockedResourceWriteProcessor<I,O,P,K>
+where 
+    P: Processor<I, O> + Send + Sync,
+    K: AsRef<str> + Send + Sync,
+    I: Send + Sync,
+    O: Send + Sync,
+{
+    /// Create a new [LockedResourceWriteProcessor]
+    pub fn new(processor: Arc<P>, store: &'static Store, key: K) -> Self {
+        Self {
+            processor,
+            store,
+            key,
+            phantom_input: PhantomData,
+            phantom_output: PhantomData,
+        }
+    }
+}
+
