@@ -1,6 +1,7 @@
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
 use async_nats::jetstream::kv::{CreateErrorKind, Store};
+use rand::Rng;
 use crate::{ByteDeserialize, ByteSerialize};
 use crate::error::{DeserializeError, SerializeError};
 use crate::kv::{KeyValue, KvReadError, KvWriteError, KeyValueRead, KeyValueWrite};
@@ -52,6 +53,25 @@ impl DistroRwLockValue {
             mode: self.mode,
             readers: self.readers,
             writer_waiting,
+        }
+    }
+    
+    /// Update the lock into a write acquired state.
+    #[inline]
+    pub fn into_write_acquired(self) -> Self {
+        Self {
+            mode: DistroRwLockMode::Write,
+            readers: 0,
+            writer_waiting: false,
+        }
+    }
+    
+    /// Update the lock into a write released state.
+    pub fn into_write_released(self) -> Self {
+        Self {
+            mode: DistroRwLockMode::Idle,
+            readers: 0,
+            writer_waiting: self.writer_waiting,
         }
     }
 }
@@ -241,7 +261,7 @@ impl DistroRwLock {
                 // block if writer active or waiting.
                 // wait the writer to finish.
                 if lock_mode == DistroRwLockMode::Write || lock.writer_waiting {
-                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    random_sleep(50, 120).await;
                     continue;
                 }
 
@@ -255,7 +275,7 @@ impl DistroRwLock {
 
                     // database is uploaded by others, try again.
                     Ok(None) => {
-                        tokio::time::sleep(Duration::from_millis(50)).await;
+                        random_sleep(20, 70).await; 
                         continue;
                     }
 
@@ -299,6 +319,8 @@ impl DistroRwLock {
             let entry = Self::atomic_read_from(store, key.as_ref().to_string())
                 .await
                 .map_err(DistroRwLockError::ReadFailed)?;
+            
+            // if we can release a lock, it must be already created
             let Some(entry) = entry else {
                 return Err(DistroRwLockError::UnexpectedMissingValue);
             };
@@ -317,7 +339,7 @@ impl DistroRwLock {
 
                 // database is uploaded by others, try again.
                 Ok(None) => {
-                    tokio::time::sleep(Duration::from_millis(50)).await;
+                    random_sleep(20, 70).await;
                     continue;
                 }
 
@@ -330,6 +352,8 @@ impl DistroRwLock {
     }
     
     /// Set waiter waiting flag.
+    /// 
+    /// If the entry does not exist, it will be created with the flag.
     pub async fn set_writer_waiting(
         store: &Store,
         key: impl AsRef<str>,
@@ -339,14 +363,126 @@ impl DistroRwLock {
             let entry = Self::atomic_read_from(store, key.as_ref().to_string())
                 .await
                 .map_err(DistroRwLockError::ReadFailed)?;
+            
+            // if the entry exists, update the value
+            if let Some(entry) = entry {
+                let lock = entry.value;
+                if lock.writer_waiting == is_waiting {
+                    return Ok(());
+                }
+            } else {
+                // if not, create the entry
+                let new_lock = Self::new(
+                    key.as_ref().to_string(),
+                    DistroRwLockValue::new().into_waiting(is_waiting),
+                );
+                let updated_value = new_lock.create_write(store).await;
+                match updated_value {
+                    // the update succeeded, now we have the lock, and database is updated.
+                    Ok(_) => return Ok(()),
+                    // someone else created the lock, try again.
+                    Err(KvWriteError::CreateError(create_err))
+                        if create_err.kind() == CreateErrorKind::AlreadyExists =>
+                        {
+                            continue;
+                        }
+                    Err(err) => return Err(DistroRwLockError::UpdateFailed(err)),
+                }
+            };
+        }
+    }
+    
+    /// Try to acquire the write lock.
+    pub async fn acquire_write(
+        store: &Store,
+        key: impl AsRef<str>,
+    ) -> Result<(), DistroRwLockError> {
+        Self::set_writer_waiting(store, key.as_ref(), true).await?;
+        
+        loop {
+            let entry = Self::atomic_read_from(store, key.as_ref().to_string())
+                .await
+                .map_err(DistroRwLockError::ReadFailed)?;
+            
+            // we created the entry in `set_writer_waiting`, so if it is None, it is unexpected
             let Some(entry) = entry else {
                 return Err(DistroRwLockError::UnexpectedMissingValue);
             };
-
+            
             let lock = entry.value;
-            if lock.writer_waiting == is_waiting {
-                return Ok(());
+            
+            // if there is reader, wait
+            if lock.mode == DistroRwLockMode::Write || lock.readers > 0 {
+                random_sleep(50, 120).await;
+                continue;
+            }
+            
+            let updated = lock.into_write_acquired();
+            let updated = Self::new(key.as_ref().to_string(), updated);
+            let reversion_result = updated.write_to_atomically(store, entry.revision).await;
+            match reversion_result {
+                // the update succeeded, now we have the lock, and database is updated.
+                Ok(Some(_)) => return Ok(()),
+
+                // database is uploaded by others, try again.
+                Ok(None) => {
+                    random_sleep(20, 90).await;
+                    continue;
+                }
+
+                // connection error or other error than unable to recover
+                Err(err) => {
+                    return Err(DistroRwLockError::UpdateFailed(err));
+                }
             }
         }
     }
+    
+    /// Release the write lock.
+    pub async fn release_write(
+        store: &Store,
+        key: impl AsRef<str>,
+    ) -> Result<(), DistroRwLockError> {
+        loop {
+            let entry = Self::atomic_read_from(store, key.as_ref().to_string())
+                .await
+                .map_err(DistroRwLockError::ReadFailed)?;
+            
+            // if we can release a lock, it must be already created
+            let Some(entry) = entry else {
+                return Err(DistroRwLockError::UnexpectedMissingValue);
+            };
+            
+            let lock = entry.value;
+            if lock.mode != DistroRwLockMode::Write {
+                return Err(DistroRwLockError::AlreadyReleased);
+            }
+            
+            let updated = lock.into_write_released();
+            let updated = Self::new(key.as_ref().to_string(), updated);
+            let reversion_result = updated.write_to_atomically(store, entry.revision).await;
+            match reversion_result {
+                // the update succeeded, now we have the lock, and database is updated.
+                Ok(Some(_)) => return Ok(()),
+
+                // database is uploaded by others, try again.
+                Ok(None) => {
+                    random_sleep(20, 50).await;
+                    continue;
+                }
+
+                // connection error or other error than unable to recover
+                Err(err) => {
+                    return Err(DistroRwLockError::UpdateFailed(err));
+                }
+            }
+        }
+    }
+}
+
+#[inline]
+/// Random sleep for a duration between `min_ms` and `max_ms`.
+async fn random_sleep(min_ms: u64, max_ms: u64) {
+    let sleep_time = rand::rng().random_range(min_ms..max_ms);
+    tokio::time::sleep(Duration::from_millis(sleep_time)).await;
 }

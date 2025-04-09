@@ -26,6 +26,7 @@ smallvec = {workspace = true}
 compact_str = {workspace = true}
 ame_bus_macros = "0.3.0-alpha.2"
 time = "0.3.41"
+rand = "0.9"
 
 [features]
 json = ["serde_json", "serde"]
