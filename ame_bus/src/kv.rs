@@ -1,11 +1,13 @@
-use crate::kv::kv::WatchError;
+use crate::error::{DeserializeError, SerializeError};
 use crate::kv::kv::Watch;
+use crate::kv::kv::WatchError;
 use crate::{ByteDeserialize, ByteSerialize};
 use async_nats::jetstream::kv;
-use async_nats::jetstream::kv::{Entry, EntryError, Store, UpdateError, UpdateErrorKind};
+use async_nats::jetstream::kv::{
+    CreateError, CreateErrorKind, Entry, EntryError, PutError, Store, UpdateError, UpdateErrorKind,
+};
 use std::fmt::{Debug, Display, Formatter};
 use std::time::Duration;
-use crate::error::{DeserializeError, SerializeError};
 
 // ---------------------------------------------
 
@@ -58,7 +60,7 @@ pub trait KeyValue: Sized + Send + Sync {
 
     /// Create the pair from key and value.
     fn new(key: Self::Key, value: Self::Value) -> Self;
-    
+
     /// Delete the value from the store.
     fn delete_anyway(
         store: &Store,
@@ -70,9 +72,9 @@ pub trait KeyValue: Sized + Send + Sync {
             Ok(())
         }
     }
-    
+
     /// Delete the value from the store atomically.
-    /// 
+    ///
     /// The `revision` is the expected revision of the value. If the revision is not matched, the delete will fail.
     fn delete_atomically(
         store: &Store,
@@ -85,7 +87,7 @@ pub trait KeyValue: Sized + Send + Sync {
             Ok(())
         }
     }
-    
+
     /// Purges all the revisions of an entry destructively, leaving behind a single purge entry in-place.
     fn purge(
         store: &Store,
@@ -174,7 +176,7 @@ impl<V: ByteDeserialize> Display for KvReadError<V> {
 impl<V: ByteDeserialize + Debug> std::error::Error for KvReadError<V> {}
 
 /// A value that can be read from KV store.
-/// 
+///
 /// If the `Value` type implements [ByteDeserialize], and
 /// the `Key` type implements `Clone`, it can implement this trait automatically.
 pub trait KeyValueRead: KeyValue
@@ -232,7 +234,7 @@ where
                 .transpose()
         }
     }
-    
+
     /// Watch the value in the store. Yields the value when it is updated.
     fn watch(
         store: &Store,
@@ -245,11 +247,12 @@ where
     }
 }
 
-impl<T: KeyValue> KeyValueRead for T 
-    where
-        T::Value: ByteDeserialize,
-        T::Key: Clone,
-{}
+impl<T: KeyValue> KeyValueRead for T
+where
+    T::Value: ByteDeserialize,
+    T::Key: Clone,
+{
+}
 
 // ---------------------------------------------
 
@@ -258,12 +261,15 @@ impl<T: KeyValue> KeyValueRead for T
 pub enum KvWriteError<V: ByteSerialize> {
     /// Error when writing to KV store atomically.
     UpdateError(UpdateError),
-    
+
     /// Error when writing to KV store.
-    PutError(async_nats::Error),
-    
+    PutError(PutError),
+
     /// Error when serializing the value.
     SerializeError(V::SerError),
+
+    /// Error when creating the value.
+    CreateError(CreateError),
 }
 
 impl<V: ByteSerialize> From<UpdateError> for KvWriteError<V> {
@@ -272,8 +278,8 @@ impl<V: ByteSerialize> From<UpdateError> for KvWriteError<V> {
     }
 }
 
-impl<V: ByteSerialize> From<async_nats::Error> for KvWriteError<V> {
-    fn from(err: async_nats::Error) -> Self {
+impl<V: ByteSerialize> From<PutError> for KvWriteError<V> {
+    fn from(err: PutError) -> Self {
         Self::PutError(err)
     }
 }
@@ -284,6 +290,7 @@ impl<V: ByteSerialize> Display for KvWriteError<V> {
             Self::UpdateError(err) => write!(f, "Update error: {}", err),
             Self::PutError(err) => write!(f, "Put error: {}", err),
             Self::SerializeError(err) => write!(f, "Serialize error: {}", err),
+            Self::CreateError(err) => write!(f, "Create error: {}", err),
         }
     }
 }
@@ -303,17 +310,20 @@ where
     ) -> impl Future<Output = Result<(), KvWriteError<Self::Value>>> + Send {
         async move {
             let key: String = self.key().into();
-            let bytes = self.value().to_bytes()
+            let bytes = self
+                .value()
+                .to_bytes()
                 .map_err(KvWriteError::SerializeError)?;
-            store.put(key, bytes.into())
+            store
+                .put(key, bytes.into())
                 .await
-                .map_err(|e| KvWriteError::UpdateError(e))?;
+                .map_err(KvWriteError::PutError)?;
             Ok(())
         }
     }
-    
+
     /// Write the value to the store atomically.
-    /// 
+    ///
     /// The `revision` is the expected revision of the value. If the revision is not matched, the write will fail and return `Ok(None)`.
     fn write_to_atomically(
         &self,
@@ -322,11 +332,11 @@ where
     ) -> impl Future<Output = Result<Option<u64>, KvWriteError<Self::Value>>> + Send {
         async move {
             let key: String = self.key().into();
-            let bytes = self.value().to_bytes()
+            let bytes = self
+                .value()
+                .to_bytes()
                 .map_err(KvWriteError::SerializeError)?;
-            let new_version = store
-                .update(key, bytes.into(), revision)
-                .await;
+            let new_version = store.update(key, bytes.into(), revision).await;
             match new_version {
                 Ok(new_version) => Ok(Some(new_version)),
                 Err(err) if err.kind() == UpdateErrorKind::WrongLastRevision => Ok(None),
@@ -334,13 +344,33 @@ where
             }
         }
     }
+
+    /// Create the value in the store. Failed if the value already exists.
+    fn create_write(
+        &self,
+        store: &Store,
+    ) -> impl Future<Output = Result<(), KvWriteError<Self::Value>>> + Send {
+        async move {
+            let key: String = self.key().into();
+            let bytes = self
+                .value()
+                .to_bytes()
+                .map_err(KvWriteError::SerializeError)?;
+            store
+                .create(key, bytes.into())
+                .await
+                .map_err(KvWriteError::CreateError)?;
+            Ok(())
+        }
+    }
 }
 
-impl<T: KeyValue> KeyValueWrite for T 
-    where
-        T::Value: ByteSerialize,
-        T::Key: Into<String> + Send + Sync + Sized,
-{}
+impl<T: KeyValue> KeyValueWrite for T
+where
+    T::Value: ByteSerialize,
+    T::Key: Into<String> + Send + Sync + Sized,
+{
+}
 
 // ---------------------------------------------
 
@@ -349,10 +379,10 @@ impl<T: KeyValue> KeyValueWrite for T
 pub struct DistroRwLockValue {
     /// The current mode of the lock.
     pub mode: DistroRwLockMode,
-    
+
     /// The number of readers.
     pub readers: u64,
-    
+
     /// Whether there is a writer waiting.
     pub writer_waiting: bool,
 }
@@ -362,12 +392,24 @@ impl DistroRwLockValue {
     pub fn new() -> Self {
         Self::default()
     }
-    
+
     /// Update the lock into a read acquired state.
+    #[inline]
     pub fn into_read_acquired(self) -> Self {
         Self {
             mode: DistroRwLockMode::Read,
             readers: self.readers + 1,
+            writer_waiting: self.writer_waiting,
+        }
+    }
+    
+    /// Update the lock into a read released state.
+    #[inline]
+    pub fn into_read_released(self) -> Self {
+        let new_readers = self.readers - 1;
+        Self {
+            mode: if new_readers > 0 { DistroRwLockMode::Read } else { DistroRwLockMode::Idle },
+            readers: new_readers,
             writer_waiting: self.writer_waiting,
         }
     }
@@ -378,45 +420,54 @@ impl DistroRwLockValue {
 pub enum DistroRwLockMode {
     /// the lock is held by a reader
     Read,
-    
+
     /// the lock is held by a writer
     Write,
-    
+
     #[default]
     /// the lock is not held
     Idle,
 }
 
 #[derive(Debug)]
-pub enum DistroRwLockAcquireError {
+/// Error when try to acquire or release the lock.
+pub enum DistroRwLockError {
     /// the length of the bytes is not 9
     InvalidByteLength,
-    
+
     /// the first byte is not `0b000`, `0b001`, `0b010`, `0b100`, `0b101`, `0b110`
     BadByteValue,
-    
+
     /// the read failed and unable to recover
-    ReadFailed(async_nats::Error),
-    
+    ReadFailed(KvReadError<DistroRwLockValue>),
+
     /// the update failed
-    UpdateFailed(async_nats::Error),
+    UpdateFailed(KvWriteError<DistroRwLockValue>),
+    
+    /// thy to release a lock which is already released
+    AlreadyReleased,
+    
+    /// unexpected missing value
+    UnexpectedMissingValue,
 }
 
-impl Display for DistroRwLockAcquireError {
+impl Display for DistroRwLockError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            DistroRwLockAcquireError::InvalidByteLength => write!(f, "Invalid byte length"),
-            DistroRwLockAcquireError::BadByteValue => write!(f, "Bad byte value"),
-            DistroRwLockAcquireError::ReadFailed(err) => write!(f, "Read failed: {}", err),
-            DistroRwLockAcquireError::UpdateFailed(err) => write!(f, "Update failed: {}", err), 
+            DistroRwLockError::InvalidByteLength => write!(f, "Invalid byte length"),
+            DistroRwLockError::BadByteValue => write!(f, "Bad byte value"),
+            DistroRwLockError::ReadFailed(err) => write!(f, "Read failed: {}", err),
+            DistroRwLockError::UpdateFailed(err) => write!(f, "Update failed: {}", err),
+            DistroRwLockError::AlreadyReleased => write!(f, "Already released"),
+            DistroRwLockError::UnexpectedMissingValue => write!(f, "Unexpected missing value"),
         }
     }
 }
 
-impl std::error::Error for DistroRwLockAcquireError {}
+impl std::error::Error for DistroRwLockError {}
 
-impl From<DistroRwLockAcquireError> for DeserializeError {
-    fn from(err: DistroRwLockAcquireError) -> Self {
+impl From<DistroRwLockError> for DeserializeError {
+    fn from(err: DistroRwLockError) -> Self {
         DeserializeError(anyhow::Error::new(err))
     }
 }
@@ -439,7 +490,6 @@ impl From<DistroRwLockSerErr> for SerializeError {
     }
 }
 
-
 impl ByteSerialize for DistroRwLockValue {
     type SerError = DistroRwLockSerErr;
 
@@ -459,12 +509,12 @@ impl ByteSerialize for DistroRwLockValue {
 }
 
 impl ByteDeserialize for DistroRwLockValue {
-    type DeError = DistroRwLockAcquireError; 
+    type DeError = DistroRwLockError;
 
     fn parse_from_bytes(bytes: impl AsRef<[u8]>) -> Result<Self, Self::DeError> {
         let bytes = bytes.as_ref();
         if bytes.len() != 9 {
-            return Err(DistroRwLockAcquireError::InvalidByteLength);
+            return Err(DistroRwLockError::InvalidByteLength);
         }
 
         let state = bytes[0];
@@ -475,7 +525,7 @@ impl ByteDeserialize for DistroRwLockValue {
             0b100 => (true, DistroRwLockMode::Idle),
             0b101 => (true, DistroRwLockMode::Read),
             0b110 => (true, DistroRwLockMode::Write),
-            _ => return Err(DistroRwLockAcquireError::BadByteValue),
+            _ => return Err(DistroRwLockError::BadByteValue),
         };
 
         let readers = u64::from_be_bytes(bytes[1..9].try_into().unwrap());
@@ -499,7 +549,7 @@ pub struct DistroRwLock {
 }
 
 impl KeyValue for DistroRwLock {
-    type Key = String; 
+    type Key = String;
     type Value = DistroRwLockValue;
 
     fn key(&self) -> Self::Key {
@@ -520,46 +570,108 @@ impl KeyValue for DistroRwLock {
 }
 
 impl DistroRwLock {
-    pub async fn acquire_read(store: &Store, key: impl AsRef<str>) -> Result<bool, DistroRwLockAcquireError> {
+    /// Try to acquire the read lock.
+    pub async fn acquire_read(
+        store: &Store,
+        key: impl AsRef<str>,
+    ) -> Result<bool, DistroRwLockError> {
         loop {
-            let entry = Self::atomic_read_from(
-                store,
-                key.as_ref().to_string(),
-            ).await
-                .map_err(DistroRwLockAcquireError::ReadFailed)?;
-            
+            let entry = Self::atomic_read_from(store, key.as_ref().to_string())
+                .await
+                .map_err(DistroRwLockError::ReadFailed)?;
+
             if let Some(entry) = entry {
                 let lock = entry.value;
                 let lock_mode = lock.mode;
-                
+
                 // block if writer active or waiting.
                 // wait the writer to finish.
                 if lock_mode == DistroRwLockMode::Write || lock.writer_waiting {
                     tokio::time::sleep(Duration::from_millis(100)).await;
                     continue;
                 }
-                
+
                 // if no block, try to acquire the read lock
                 let updated = lock.into_read_acquired();
                 let updated = Self::new(key.as_ref().to_string(), updated);
-                let reversion_result = updated
-                    .write_to_atomically(store, entry.revision)
-                    .await;
+                let reversion_result = updated.write_to_atomically(store, entry.revision).await;
                 match reversion_result {
+                    // the update succeeded, now we have the lock, and database is updated.
                     Ok(Some(_)) => return Ok(true),
+
+                    // database is uploaded by others, try again.
                     Ok(None) => {
                         tokio::time::sleep(Duration::from_millis(50)).await;
                         continue;
-                    },
-                    Err(_) => {
-                        return Err(DistroRwLockAcquireError::UpdateFailed); 
-                    },
+                    }
+
+                    // connection error or other error than unable to recover
+                    Err(err) => {
+                        return Err(DistroRwLockError::UpdateFailed(err));
+                    }
+                }
+            } else {
+                // create and hold the lock
+                let new_lock = Self::new(
+                    key.as_ref().to_string(),
+                    DistroRwLockValue::new().into_read_acquired(),
+                );
+
+                let updated_value = new_lock.create_write(store).await;
+                match updated_value {
+                    // the update succeeded, now we have the lock, and database is updated.
+                    Ok(_) => return Ok(true),
+                    
+                    // someone else created the lock, try again.
+                    Err(KvWriteError::CreateError(create_err))
+                        if create_err.kind() == CreateErrorKind::AlreadyExists =>
+                    {
+                        continue;
+                    }
+                    
+                    // connection error or other error than unable to recover
+                    Err(err) => return Err(DistroRwLockError::UpdateFailed(err)),
+                }
+            }
+        }
+    }
+    
+    /// release the read lock
+    pub async fn release_read(
+        store: &Store,
+        key: impl AsRef<str>,
+    ) -> Result<(), DistroRwLockError> {
+        loop {
+            let entry = Self::atomic_read_from(store, key.as_ref().to_string())
+                .await
+                .map_err(DistroRwLockError::ReadFailed)?;
+            let Some(entry) = entry else {
+                return Err(DistroRwLockError::UnexpectedMissingValue);
+            };
+            
+            let lock = entry.value;
+            if lock.mode != DistroRwLockMode::Read || lock.readers == 0 {
+                return Err(DistroRwLockError::AlreadyReleased);
+            }
+            
+            let updated = lock.into_read_released();
+            let updated = Self::new(key.as_ref().to_string(), updated);
+            let reversion_result = updated.write_to_atomically(store, entry.revision).await;
+            match reversion_result {
+                // the update succeeded, now we have the lock, and database is updated.
+                Ok(Some(_)) => return Ok(()),
+                
+                // database is uploaded by others, try again.
+                Ok(None) => {
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                    continue;
                 }
                 
-                
-            } else { 
-                // create and hold the lock
+                // connection error or other error than unable to recover
+                Err(err) => {
+                    return Err(DistroRwLockError::UpdateFailed(err));
+                }
             }
-        } 
-    }
+        }
+    } 
 }
