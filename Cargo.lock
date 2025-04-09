@@ -33,7 +33,6 @@ dependencies = [
  "ame_bus_macros 0.3.0-alpha.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "anyhow",
  "async-nats",
- "async-trait",
  "bytes",
  "compact_str",
  "futures",
@@ -42,7 +41,6 @@ dependencies = [
  "rand 0.9.0",
  "serde",
  "serde_json",
- "smallvec",
  "time",
  "tokio",
  "tracing",
@@ -112,17 +110,6 @@ dependencies = [
  "tracing",
  "tryhard",
  "url",
-]
-
-[[package]]
-name = "async-trait"
-version = "0.1.86"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "644dd749086bf3771a2fbc5f256fdb982d53f011c7d5d560304eafeecebce79d"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]
