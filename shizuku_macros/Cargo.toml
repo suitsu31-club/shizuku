@@ -1,10 +1,10 @@
 [package]
-name = "ame_bus_macros"
-version = "0.3.0-alpha.2"
+name = "shizuku_macros"
+version = "0.0.1-alpha.1"
 edition = "2021"
 license = "MIT"
 description = "proc-macro for ame-bus"
-repository = "https://github.com/Ame-Build/ame-bus"
+repository = "https://github.com/suitsu31-club/shizuku"
 authors = ["Nikaidou Haruki <nharuki@pm.me>"]
 
 [lib]

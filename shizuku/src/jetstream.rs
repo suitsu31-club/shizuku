@@ -157,7 +157,7 @@ macro_rules! jet_route {
             $crate::error::PreProcessError::UnexpectedSubject(message_input.subject.clone())
         ));
         $(
-            ame_bus_jetstream_path_route_helper!{
+            shizuku_jetstream_path_route_helper!{
                 [$($path),+] => $handler @ (message_input, _depth, subject, unexpected_subject_error)
             }
         )+
@@ -169,7 +169,7 @@ macro_rules! jet_route {
 #[macro_export(local_inner_macros)]
 #[doc(hidden)]
 /// handle the path
-macro_rules! ame_bus_jetstream_path_route_helper {
+macro_rules! shizuku_jetstream_path_route_helper {
     // ["foo"] => (handler)
     // one segment path, the handler is a processor
     (
@@ -192,7 +192,7 @@ macro_rules! ame_bus_jetstream_path_route_helper {
     ) => {
         core::assert_ne!(">", $one_seg_path, "Recursive wildcard \">\" must be the last segment");
         if $one_seg_path == "*" || $subject[$depth] == $one_seg_path {
-            ame_bus_jetstream_path_route_helper!{
+            shizuku_jetstream_path_route_helper!{
                 @nest_route
                 [
                     $([$($path),+] => $handler),+
@@ -211,7 +211,7 @@ macro_rules! ame_bus_jetstream_path_route_helper {
     ) => {
         core::assert_ne!(">", $one_seg_path, "Recursive wildcard \">\" must be the last segment");
         if $one_seg_path == "*" || $subject[$depth] == $one_seg_path {
-            ame_bus_jetstream_path_route_helper!{
+            shizuku_jetstream_path_route_helper!{
                 @nest_route
                 [
                     [$($rest_seg_path),+] => ($handler)
@@ -232,7 +232,7 @@ macro_rules! ame_bus_jetstream_path_route_helper {
     ) => {
         core::assert_ne!(">", $one_seg_path, "Recursive wildcard \">\" must be the last segment");
         if $one_seg_path == "*" || $subject[$depth] == $one_seg_path {
-            ame_bus_jetstream_path_route_helper!{
+            shizuku_jetstream_path_route_helper!{
                 @nest_route
                 [
                     [$($rest_seg_path),+] => [$([$($path),+] => $handler),+]
@@ -257,7 +257,7 @@ macro_rules! ame_bus_jetstream_path_route_helper {
             return $unexpected_subject_error;
         }
         $(
-            ame_bus_jetstream_path_route_helper![
+            shizuku_jetstream_path_route_helper![
                 [ $($path),+ ] => $handler
                 @
                 ($message_input, _depth, $subject, $unexpected_subject_error)

@@ -1,9 +1,9 @@
 [package]
-name = "ame-bus"
-version = "2.0.0-alpha.1"
+name = "shizuku"
+version = "0.0.1-alpha.1"
 edition = "2024"
 license = "MIT"
-repository = "https://github.com/Ame-Build/ame-bus.git"
+repository = "https://github.com/suitsu31-club/shizuku"
 description = "Modern microservices framework based on NATS."
 authors = ["Nikaidou Haruki <nharuki@pm.me>"]
 

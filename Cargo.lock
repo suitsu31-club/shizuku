@@ -27,37 +27,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ame-bus"
-version = "2.0.0-alpha.1"
-dependencies = [
- "ame_bus_macros 0.3.0-alpha.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "anyhow",
- "async-nats",
- "bytes",
- "compact_str",
- "futures",
- "prost",
- "prost-types",
- "rand 0.9.0",
- "serde",
- "serde_json",
- "time",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "ame_bus_macros"
-version = "0.3.0-alpha.2"
-dependencies = [
- "convert_case",
- "proc-macro2",
- "quote",
- "regex",
- "syn",
-]
-
-[[package]]
 name = "ame_bus_macros"
 version = "0.3.0-alpha.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1246,6 +1215,37 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "digest",
+]
+
+[[package]]
+name = "shizuku"
+version = "0.0.1-alpha.1"
+dependencies = [
+ "ame_bus_macros",
+ "anyhow",
+ "async-nats",
+ "bytes",
+ "compact_str",
+ "futures",
+ "prost",
+ "prost-types",
+ "rand 0.9.0",
+ "serde",
+ "serde_json",
+ "time",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "shizuku_macros"
+version = "0.0.1-alpha.1"
+dependencies = [
+ "convert_case",
+ "proc-macro2",
+ "quote",
+ "regex",
+ "syn",
 ]
 
 [[package]]
