@@ -248,8 +248,8 @@ impl SubjectMatcher {
     /// - "foo.bar2.baz" matches "foo.*.baz"
     ///
     /// ```rust
-    /// # use ame_bus::subject_matcher;
-    /// # use ame_bus::core::message::NatsSubjectPath;
+    /// # use shizuku::subject_matcher;
+    /// # use shizuku::core::message::NatsSubjectPath;
     ///
     /// let path = NatsSubjectPath::from(vec!["foo", "bar", "baz"]);
     ///
@@ -326,8 +326,8 @@ impl SubjectMatcher {
 ///
 /// Examples:
 /// ```
-/// # use ame_bus::subject_matcher;
-/// # use ame_bus::core::message::SubjectMatcherField;
+/// # use shizuku::subject_matcher;
+/// # use shizuku::core::message::SubjectMatcherField;
 ///
 /// let matcher = subject_matcher!["foo", "*", "bar"];  // matches "foo.{any}.bar"
 /// assert_eq!(

@@ -5,7 +5,7 @@
 #![deny(clippy::panic)]
 #![doc = include_str!("../README.md")]
 
-/// Core of Ame Bus.
+/// Core of Shizuku.
 /// 
 /// This part defines the general traits and utilities.
 pub mod core;
@@ -33,16 +33,16 @@ pub use futures;
 
 #[cfg(feature = "json")]
 /// Implement [ByteDeserialize] by `serde_json` if it already implements `serde::Deserialize`.
-pub use ame_bus_macros::JsonByteDes;
+pub use shizuku_macros::JsonByteDes;
 
 #[cfg(feature = "json")]
 /// Implement [ByteSerialize] by `serde_json` if it already implements `serde::Serialize`.
-pub use ame_bus_macros::JsonByteSer;
+pub use shizuku_macros::JsonByteSer;
 
 #[cfg(feature = "protobuf")]
 /// Implement [ByteDeserialize] by `prost` if it already implements `prost::Message`.
-pub use ame_bus_macros::ProtoDes;
+pub use shizuku_macros::ProtoDes;
 
 #[cfg(feature = "protobuf")]
 /// Implement [ByteSerialize] by `prost` if it already implements `prost::Message`.
-pub use ame_bus_macros::ProtoSer;
+pub use shizuku_macros::ProtoSer;

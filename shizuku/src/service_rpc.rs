@@ -93,11 +93,11 @@ impl<F, Et> NatsService<F, Et>
 /// Example:
 /// ```rust
 /// # use async_nats::Message;
-/// # use ame_bus::{service_route, Processor, Error, FinalProcessor};
-/// # use ame_bus::service_rpc::FinalNatsProcessor;
+/// # use shizuku::{service_route, Processor, Error, FinalProcessor};
+/// # use shizuku::service_rpc::FinalNatsProcessor;
 /// # use bytes::Bytes;
 /// # use std::sync::Arc;
-/// use ame_bus::service_rpc::ServiceEndpoint;
+/// use shizuku::service_rpc::ServiceEndpoint;
 ///
 /// struct CreateProcessor;     // example
 /// impl Processor<Message, Result<Bytes, Error>> for CreateProcessor {

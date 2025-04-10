@@ -7,7 +7,7 @@ pub fn derive_proto_ser(input: TokenStream) -> TokenStream {
     let name = &input.ident;
 
     quote! {
-        impl ame_bus::ByteSerialize for #name {
+        impl shizuku::ByteSerialize for #name {
             type SerError = prost::EncodeError;
                 
             fn to_bytes(&self) -> Result<Box<[u8]>, Self::SerError> {

@@ -7,7 +7,7 @@ pub fn derive_json_byte_ser(input: TokenStream) -> TokenStream {
     let name = &input.ident;
 
     quote! {
-        impl ame_bus::ByteSerialize for #name {
+        impl shizuku::ByteSerialize for #name {
             type SerError = serde_json::Error;
 
             fn to_bytes(&self) -> Result<Box<[u8]>, Self::SerError> {

@@ -1,4 +1,4 @@
-# Ame Bus
+# Shizuku
 
 Modern microservices framework based on [NATS](https://nats.io).
 

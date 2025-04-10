@@ -100,8 +100,8 @@ where
 /// Example:
 /// 
 /// ```rust
-/// # use ame_bus::jetstream::FinalJetStreamProcessor;
-/// # use ame_bus::{jet_route, Error, Processor};
+/// # use shizuku::jetstream::FinalJetStreamProcessor;
+/// # use shizuku::{jet_route, Error, Processor};
 /// # use async_nats::Message;
 /// 
 /// struct OrderPaidProcessor; // example

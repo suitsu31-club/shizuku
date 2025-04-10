@@ -22,7 +22,7 @@ futures = { workspace = true }
 bytes = {workspace = true}
 async-nats = { workspace = true }
 compact_str = {workspace = true}
-ame_bus_macros = "0.3.0-alpha.2"
+shizuku_macros = "0.0.1-alpha.1"
 time = "0.3.41"
 rand = "0.9"
 

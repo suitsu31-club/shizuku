@@ -4,7 +4,7 @@
 macro_rules! protobuf_ser {
     ($($t:ty),*) => {
         $(
-            impl ame_bus::core::message::ByteSerialize for $t {
+            impl shizuku::core::message::ByteSerialize for $t {
                 type SerError = prost::EncodeError;
                 
                 fn to_bytes(&self) -> Result<Box<[u8]>, Self::SerError> {
@@ -24,7 +24,7 @@ macro_rules! protobuf_ser {
 macro_rules! protobuf_des {
     ($($t:ty),*) => {
         $(
-            impl ame_bus::core::message::ByteDeserialize for $t {
+            impl $crate::core::message::ByteDeserialize for $t {
                 type DeError = prost::DecodeError;
 
                 fn parse_from_bytes(bytes: impl AsRef<[u8]>) -> Result<Self, Self::DeError> {
