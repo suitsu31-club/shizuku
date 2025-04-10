@@ -2,8 +2,6 @@
 
 Modern microservices framework based on [NATS](https://nats.io).
 
-## Optional Features
+[docs](https://shizuku.netaneko.com)
 
-- `jetstream` - Enable JetStream support.
-- `service` - Enable NATS Service API support.
-- `full` - Enable `jetstream` and `service` features.
+[API Reference](https://docs.rs/shizuku/latest/shizuku/)]
