@@ -27,19 +27,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ame_bus_macros"
-version = "0.3.0-alpha.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "452ae343b13b36d0142775c42d8bc0c2c581dd749ac8ab9cdee2971633113ccb"
-dependencies = [
- "convert_case",
- "proc-macro2",
- "quote",
- "regex",
- "syn",
-]
-
-[[package]]
 name = "anyhow"
 version = "1.0.96"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1221,7 +1208,6 @@ dependencies = [
 name = "shizuku"
 version = "0.0.1-alpha.1"
 dependencies = [
- "ame_bus_macros",
  "anyhow",
  "async-nats",
  "bytes",
@@ -1232,6 +1218,7 @@ dependencies = [
  "rand 0.9.0",
  "serde",
  "serde_json",
+ "shizuku_macros 0.0.1-alpha.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "time",
  "tokio",
  "tracing",
@@ -1240,6 +1227,19 @@ dependencies = [
 [[package]]
 name = "shizuku_macros"
 version = "0.0.1-alpha.1"
+dependencies = [
+ "convert_case",
+ "proc-macro2",
+ "quote",
+ "regex",
+ "syn",
+]
+
+[[package]]
+name = "shizuku_macros"
+version = "0.0.1-alpha.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77e228a9462f0293fd4e594eebd10876949007cef134d693fd5494a1a05d3e2d"
 dependencies = [
  "convert_case",
  "proc-macro2",
