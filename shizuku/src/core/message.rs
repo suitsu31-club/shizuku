@@ -69,7 +69,7 @@ pub trait NatsRpcCallTrait<Response: ByteDeserialize>: ByteSerialize {
     /// The subject of the message. Must be static.
     ///
     /// A message can be used as multiple RPC calls' request. They can have multiple subjects.
-    /// 
+    ///
     /// We bind the response type here as phantom data to ensure the subject is matched.
     fn subject() -> (NatsSubjectPath, PhantomData<Response>);
 
@@ -105,13 +105,21 @@ pub trait NatsRpcCallTrait<Response: ByteDeserialize>: ByteSerialize {
 pub struct NatsSubjectPath(pub Box<[CompactString]>);
 
 #[macro_export]
-/// Creates a `NatsSubjectPath` from a sequence of string literals.
+/// Creates a `NatsSubjectPath` from 
+/// 
+/// - a sequence of string literals
+/// - a sequence of expressions that implement `AsRef<str>`
 macro_rules! subject_path {
     [$( $segment:literal ),* $(,)?] => {
         NatsSubjectPath(Box::new([
             $(compact_str::CompactString::const_new($segment),)*
         ]))
-    }
+    };
+    [$( $segment:expr ),* $(,)?] => {
+        NatsSubjectPath(Box::new([
+            $(compact_str::CompactString::new($segment),)*
+        ]))
+    };
 }
 
 impl ToSubject for NatsSubjectPath {
@@ -259,9 +267,10 @@ impl SubjectMatcher {
     ///
     /// ```rust
     /// # use shizuku::subject_matcher;
+    /// # use shizuku::subject_path;
     /// # use shizuku::core::message::NatsSubjectPath;
     ///
-    /// let path = NatsSubjectPath::from(vec!["foo", "bar", "baz"]);
+    /// let path = subject_path!["foo", "bar", "baz"];
     ///
     /// let matcher = subject_matcher!["foo", "bar", "baz"];
     /// assert!(matcher.matches(&path));
@@ -278,7 +287,7 @@ impl SubjectMatcher {
     /// let matcher = subject_matcher!["foo", ">"];
     /// assert!(matcher.matches(&path));
     ///
-    /// let path = NatsSubjectPath::from(vec!["foo", "bar2", "baz"]);
+    /// let path = subject_path!["foo", "bar2", "baz"];
     /// let matcher = subject_matcher!["foo", "*", "baz"];
     /// assert!(matcher.matches(&path));
     /// ```
@@ -341,22 +350,22 @@ impl SubjectMatcher {
 ///
 /// let matcher = subject_matcher!["foo", "*", "bar"];  // matches "foo.{any}.bar"
 /// assert_eq!(
-///     matcher,
-///     vec![
+///     matcher.0.as_ref(),
+///     &[
 ///         SubjectMatcherField::Static("foo".into()),
 ///         SubjectMatcherField::Wildcard,
 ///         SubjectMatcherField::Static("bar".into()),
-///     ].into()
+///     ]
 /// );
 ///
 /// let matcher = subject_matcher!["foo", "bar", ">"];  // matches "foo.bar.{anything...}"
 /// assert_eq!(
-///     matcher,
-///     vec![
+///     matcher.0.as_ref(),
+///     &[
 ///         SubjectMatcherField::Static("foo".into()),
 ///         SubjectMatcherField::Static("bar".into()),
 ///         SubjectMatcherField::RecursiveWildcard,
-///     ].into()
+///     ]
 /// );
 ///
 /// ```
@@ -448,5 +457,51 @@ mod tests {
     #[should_panic(expected = "'>' wildcard must be the last segment")]
     fn test_recursive_wildcard_not_last() {
         subject_matcher!["foo", ">", "bar"];
+    }
+
+    #[test]
+    fn test_subject_matcher() {
+        let matcher = subject_matcher!["foo", "bar", "baz"];
+        assert!(matcher.matches(&subject_path!["foo", "bar", "baz"]));
+        assert!(!matcher.matches(&subject_path!["foo", "bar"]));
+    }
+
+    #[test]
+    fn test_subject_matcher_comprehensive() {
+        // Test exact matching
+        let matcher = subject_matcher!["foo", "bar", "baz"];
+        assert!(matcher.matches(&subject_path!["foo", "bar", "baz"]));
+        assert!(!matcher.matches(&subject_path!["foo", "bar"]));
+        assert!(!matcher.matches(&subject_path!["foo", "bar", "baz", "qux"]));
+        assert!(!matcher.matches(&subject_path!["foo", "baz", "bar"]));
+
+        // Test single wildcard matching
+        let matcher = subject_matcher!["foo", "*", "baz"];
+        assert!(matcher.matches(&subject_path!["foo", "bar", "baz"]));
+        assert!(matcher.matches(&subject_path!["foo", "anything", "baz"]));
+        assert!(!matcher.matches(&subject_path!["foo", "bar"]));
+        assert!(!matcher.matches(&subject_path!["foo", "bar", "baz", "qux"]));
+
+        // Test recursive wildcard matching
+        let matcher = subject_matcher!["foo", ">"];
+        assert!(matcher.matches(&subject_path!["foo", "bar"]));
+        assert!(matcher.matches(&subject_path!["foo", "bar", "baz"]));
+        assert!(matcher.matches(&subject_path!["foo", "bar", "baz", "qux"]));
+        assert!(!matcher.matches(&subject_path!["not_foo", "bar", "baz"]));
+
+        // Test mixed wildcards
+        let matcher = subject_matcher!["foo", "*", ">"];
+        assert!(matcher.matches(&subject_path!["foo", "bar", "baz"]));
+        assert!(matcher.matches(&subject_path!["foo", "anything", "baz", "qux"]));
+        assert!(!matcher.matches(&subject_path!["foo"]));
+
+        // Test empty matcher
+        let matcher = subject_matcher![];
+        assert!(matcher.matches(&subject_path![]));
+        assert!(!matcher.matches(&subject_path!["foo"]));
+
+        // Test empty subject
+        let matcher = subject_matcher!["foo", "bar"];
+        assert!(!matcher.matches(&subject_path![]));
     }
 }
