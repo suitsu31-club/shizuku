@@ -104,6 +104,16 @@ pub trait NatsRpcCallTrait<Response: ByteDeserialize>: ByteSerialize {
 /// NATS subject path.
 pub struct NatsSubjectPath(pub Box<[CompactString]>);
 
+#[macro_export]
+/// Creates a `NatsSubjectPath` from a sequence of string literals.
+macro_rules! subject_path {
+    [$( $segment:literal ),* $(,)?] => {
+        NatsSubjectPath(Box::new([
+            $(compact_str::CompactString::const_new($segment),)*
+        ]))
+    }
+}
+
 impl ToSubject for NatsSubjectPath {
     fn to_subject(&self) -> Subject {
         let joined = self.0.join(".");
