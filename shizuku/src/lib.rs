@@ -4,6 +4,7 @@
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]
 #![doc = include_str!("../README.md")]
+#![doc(html_logo_url = "https://raw.githubusercontent.com/suitsu31-club/shizuku/refs/heads/main/assets/icon.svg")]
 
 /// Core of Shizuku.
 /// 
