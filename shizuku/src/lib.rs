@@ -50,3 +50,18 @@ pub use shizuku_macros::ProtoDes;
 #[cfg(feature = "protobuf")]
 /// Implement [ByteSerialize] by `prost` if it already implements `prost::Message`.
 pub use shizuku_macros::ProtoSer;
+
+/// reexports of essentials
+pub mod prelude {
+    pub use crate::core::error::Error;
+    pub use kanau::processor::{Processor, FinalProcessor};
+    pub use kanau::flow::EarlyReturn;
+    pub use kanau::early_return;
+    pub use crate::core::message::{
+        ByteSerialize, 
+        ByteDeserialize,
+        StaticSubjectMessage, 
+        JetStreamMessageSendTrait
+    };
+    pub use crate::kv::{KeyValue, KeyValueRead, KeyValueWrite};
+}
