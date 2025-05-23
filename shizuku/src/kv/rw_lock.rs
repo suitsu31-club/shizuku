@@ -3,11 +3,11 @@ use crate::kv::{KeyValue, KeyValueRead, KeyValueWrite, KvReadError, KvWriteError
 use crate::{ByteDeserialize, ByteSerialize};
 use async_nats::jetstream::kv::{CreateErrorKind, Store};
 use rand::Rng;
-use std::fmt::{Display, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use kanau::processor::Processor;
+use thiserror::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 /// The Kernel of [DistroRwLock]
@@ -20,12 +20,35 @@ pub struct DistroRwLockValue {
 
     /// Whether there is a writer waiting.
     pub writer_waiting: bool,
+
+    /// Timestamp when the lock was acquired (in seconds since UNIX epoch).
+    /// Only relevant when mode is Read or Write.
+    pub acquired_at: u64,
 }
 
 impl DistroRwLockValue {
     /// Create a new lock.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Get the current timestamp in seconds since UNIX epoch.
+    fn current_timestamp() -> u64 {
+        #[allow(clippy::expect_used)]
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or(Duration::from_secs(0))
+            .as_secs()
+    }
+
+    /// Check if the lock has been held for more than 60 seconds.
+    pub fn is_expired(&self) -> bool {
+        if self.mode == DistroRwLockMode::Idle {
+            return false;
+        }
+
+        let now = Self::current_timestamp();
+        now.saturating_sub(self.acquired_at) > 60
     }
 
     /// Update the lock into a read acquired state.
@@ -35,6 +58,7 @@ impl DistroRwLockValue {
             mode: DistroRwLockMode::Read,
             readers: self.readers + 1,
             writer_waiting: self.writer_waiting,
+            acquired_at: Self::current_timestamp(),
         }
     }
 
@@ -50,6 +74,7 @@ impl DistroRwLockValue {
             },
             readers: new_readers,
             writer_waiting: self.writer_waiting,
+            acquired_at: 0,
         }
     }
 
@@ -60,6 +85,7 @@ impl DistroRwLockValue {
             mode: self.mode,
             readers: self.readers,
             writer_waiting,
+            acquired_at: self.acquired_at,
         }
     }
 
@@ -70,6 +96,7 @@ impl DistroRwLockValue {
             mode: DistroRwLockMode::Write,
             readers: 0,
             writer_waiting: false,
+            acquired_at: Self::current_timestamp(),
         }
     }
 
@@ -79,6 +106,7 @@ impl DistroRwLockValue {
             mode: DistroRwLockMode::Idle,
             readers: 0,
             writer_waiting: self.writer_waiting,
+            acquired_at: 0,
         }
     }
 }
@@ -97,26 +125,18 @@ pub enum DistroRwLockMode {
     Idle,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 /// Error when deserializing the lock state.
 pub enum DistroRwLockDesErr {
     /// the length of the bytes is not 9
+    #[error("Invalid byte length")]
     InvalidByteLength,
 
+
     /// the first byte is not `0b000`, `0b001`, `0b010`, `0b100`, `0b101`, `0b110`
+    #[error("Invalid byte value")]
     BadByteValue,
 }
-
-impl Display for DistroRwLockDesErr {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DistroRwLockDesErr::InvalidByteLength => write!(f, "Invalid byte length"),
-            DistroRwLockDesErr::BadByteValue => write!(f, "Bad byte value"),
-        }
-    }
-}
-
-impl std::error::Error for DistroRwLockDesErr {}
 
 impl From<DistroRwLockDesErr> for DeserializeError {
     fn from(err: DistroRwLockDesErr) -> Self {
@@ -124,46 +144,30 @@ impl From<DistroRwLockDesErr> for DeserializeError {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 /// Error when try to acquire or release the lock.
 pub enum DistroRwLockError {
     /// the read failed and unable to recover
+    #[error("Read failed: {0}")]
     ReadFailed(KvReadError<DistroRwLockValue>),
 
     /// the update failed
+    #[error("Update failed: {0}")]
     UpdateFailed(KvWriteError<DistroRwLockValue>),
 
     /// thy to release a lock which is already released
+    #[error("Already released")]
     AlreadyReleased,
 
     /// unexpected missing value
+    #[error("Unexpected missing value")]
     UnexpectedMissingValue,
 }
 
-impl Display for DistroRwLockError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DistroRwLockError::ReadFailed(err) => write!(f, "Read failed: {}", err),
-            DistroRwLockError::UpdateFailed(err) => write!(f, "Update failed: {}", err),
-            DistroRwLockError::AlreadyReleased => write!(f, "Already released"),
-            DistroRwLockError::UnexpectedMissingValue => write!(f, "Unexpected missing value"),
-        }
-    }
-}
-
-impl std::error::Error for DistroRwLockError {}
-
 /// Error when serializing the lock state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[error("Failed to serialize lock state")]
 pub enum DistroRwLockSerErr {}
-
-impl Display for DistroRwLockSerErr {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Failed to serialize lock state")
-    }
-}
-
-impl std::error::Error for DistroRwLockSerErr {}
 
 impl From<DistroRwLockSerErr> for SerializeError {
     fn from(err: DistroRwLockSerErr) -> Self {
@@ -175,7 +179,7 @@ impl ByteSerialize for DistroRwLockValue {
     type SerError = DistroRwLockSerErr;
 
     fn to_bytes(&self) -> Result<Box<[u8]>, Self::SerError> {
-        let mut bytes: [u8; 9] = [0b00000000; 9];
+        let mut bytes: [u8; 17] = [0b00000000; 17];
         match (&self.writer_waiting, &self.mode) {
             (false, DistroRwLockMode::Idle) => bytes[0] = 0b000,
             (false, DistroRwLockMode::Read) => bytes[0] = 0b001,
@@ -185,6 +189,7 @@ impl ByteSerialize for DistroRwLockValue {
             (true, DistroRwLockMode::Write) => bytes[0] = 0b110,
         }
         bytes[1..9].copy_from_slice(&self.readers.to_be_bytes());
+        bytes[9..17].copy_from_slice(&self.acquired_at.to_be_bytes());
         Ok(bytes.into())
     }
 }
@@ -194,7 +199,7 @@ impl ByteDeserialize for DistroRwLockValue {
 
     fn parse_from_bytes(bytes: impl AsRef<[u8]>) -> Result<Self, Self::DeError> {
         let bytes = bytes.as_ref();
-        if bytes.len() != 9 {
+        if bytes.len() != 17 && bytes.len() != 9 {
             return Err(DistroRwLockDesErr::InvalidByteLength);
         }
 
@@ -213,10 +218,20 @@ impl ByteDeserialize for DistroRwLockValue {
             DistroRwLockDesErr::InvalidByteLength
         })?);
 
+        // Handle both old format (9 bytes) and new format (17 bytes)
+        let acquired_at = if bytes.len() == 17 {
+            u64::from_be_bytes(bytes[9..17].try_into().map_err(|_| {
+                DistroRwLockDesErr::InvalidByteLength
+            })?)
+        } else {
+            0 // Default value for old format
+        };
+
         Ok(Self {
             mode,
             readers,
             writer_waiting,
+            acquired_at,
         })
     }
 }
@@ -266,6 +281,29 @@ impl DistroRwLock {
             if let Some(entry) = entry {
                 let lock = entry.value;
                 let lock_mode = lock.mode;
+
+                // Check if the lock has expired (held for more than 60s)
+                if lock.is_expired() {
+                    // If the lock has expired, treat it as Idle and try to acquire it
+                    let updated = DistroRwLockValue {
+                        mode: DistroRwLockMode::Read,
+                        readers: 1,
+                        writer_waiting: lock.writer_waiting,
+                        acquired_at: DistroRwLockValue::current_timestamp(),
+                    };
+                    let updated = Self::new(key.as_ref().to_string(), updated);
+                    let reversion_result = updated.write_to_atomically(store, entry.revision).await;
+                    match reversion_result {
+                        Ok(Some(_)) => return Ok(()),
+                        Ok(None) => {
+                            random_sleep(20, 70).await;
+                            continue;
+                        }
+                        Err(err) => {
+                            return Err(DistroRwLockError::UpdateFailed(err));
+                        }
+                    }
+                }
 
                 // block if writer active or waiting.
                 // wait the writer to finish.
@@ -420,6 +458,29 @@ impl DistroRwLock {
 
             let lock = entry.value;
 
+            // Check if the lock has expired (held for more than 60s)
+            if lock.is_expired() {
+                // If the lock has expired, treat it as Idle and try to acquire it
+                let updated = DistroRwLockValue {
+                    mode: DistroRwLockMode::Write,
+                    readers: 0,
+                    writer_waiting: false,
+                    acquired_at: DistroRwLockValue::current_timestamp(),
+                };
+                let updated = Self::new(key.as_ref().to_string(), updated);
+                let reversion_result = updated.write_to_atomically(store, entry.revision).await;
+                match reversion_result {
+                    Ok(Some(_)) => return Ok(()),
+                    Ok(None) => {
+                        random_sleep(20, 90).await;
+                        continue;
+                    }
+                    Err(err) => {
+                        return Err(DistroRwLockError::UpdateFailed(err));
+                    }
+                }
+            }
+
             // if there is reader, wait
             if lock.mode == DistroRwLockMode::Write || lock.readers > 0 {
                 random_sleep(50, 120).await;
@@ -496,26 +557,17 @@ async fn random_sleep(min_ms: u64, max_ms: u64) {
     tokio::time::sleep(Duration::from_millis(sleep_time)).await;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 /// The error result of [LockedResourceReadProcessor] and [LockedResourceWriteProcessor]
 pub enum WithLockProcessError {
     /// The error when try to acquire or release the lock.
+    #[error("Failed to acquire lock: {0}")]
     FailOnAcquire(DistroRwLockError),
 
     /// The error when try to acquire or release the lock.
+    #[error("Failed to release lock: {0}")]
     FailOnRelease(DistroRwLockError),
 }
-
-impl Display for WithLockProcessError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::FailOnAcquire(err) => write!(f, "Failed to acquire lock: {}", err),
-            Self::FailOnRelease(err) => write!(f, "Failed to release lock: {}", err),
-        }
-    }
-}
-
-impl std::error::Error for WithLockProcessError {}
 
 /// A RAII wrapper around a [Processor] that acquires a lock to read the resource before processing and releases it after.
 pub struct LockedResourceReadProcessor<I, O, P, K> 
@@ -596,13 +648,13 @@ where
         DistroRwLock::acquire_write(self.store, self.key.as_ref())
             .await
             .map_err(WithLockProcessError::FailOnAcquire)?;
-        
+
         let result = self.processor.process(input).await;
-        
+
         DistroRwLock::release_write(self.store, self.key.as_ref())
             .await
             .map_err(WithLockProcessError::FailOnRelease)?;
-            
+
         Ok(result)
     }
 }
@@ -625,4 +677,3 @@ where
         }
     }
 }
-
