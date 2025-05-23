@@ -4,6 +4,9 @@ pub mod rw_lock;
 /// atomic operation helper functions
 pub mod atomic_opt;
 
+/// distributed leader election algorithm
+pub mod election;
+
 use crate::kv::kv::Watch;
 use crate::kv::kv::WatchError;
 use crate::{ByteDeserialize, ByteSerialize};
@@ -256,7 +259,7 @@ pub enum KvWriteError<V: ByteSerialize> {
     /// Error when writing to KV store.
     #[error("Put error: {0}")]
     PutError(#[from] PutError),
- 
+
     /// Error when serializing the value.
     #[error("Serialize error: {0}")]
     SerializeError(V::SerError),
