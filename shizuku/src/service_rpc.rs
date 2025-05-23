@@ -1,10 +1,11 @@
-use crate::core::{ErrorTracer, FinalProcessor, Processor};
+use crate::core::{ErrorTracer};
 use crate::error::{Error, PostProcessError};
 use async_nats::service::Request;
 use async_nats::{Message, Subject};
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
 use std::sync::Arc;
+use kanau::processor::{FinalProcessor, Processor};
 
 /// The outermost layer of a NATS service.
 pub trait FinalNatsProcessor:
@@ -59,7 +60,7 @@ impl<F, Et> NatsService<F, Et>
     /// 2. `stream`: The stream of requests.
     /// 3. `nats_connection`: The NATS connection, must be `&'static async_nats::Client`.
     /// 4. `error_tracer`: The error tracer, must implement [ErrorTracer] trait. If you
-    ///     don't want to trace the error, use [EmptyErrorTracer](crate::core::EmptyErrorTracer)
+    ///    don't want to trace the error, use [EmptyErrorTracer](crate::core::EmptyErrorTracer)
     pub fn new(
         processor: F,
         nats_connection: &'static async_nats::Client,
@@ -93,7 +94,8 @@ impl<F, Et> NatsService<F, Et>
 /// Example:
 /// ```rust
 /// # use async_nats::Message;
-/// # use shizuku::{service_route, Processor, Error, FinalProcessor};
+/// # use shizuku::{service_route, Error};
+/// # use shizuku::processor::{Processor, FinalProcessor};
 /// # use shizuku::service_rpc::FinalNatsProcessor;
 /// # use bytes::Bytes;
 /// # use std::sync::Arc;

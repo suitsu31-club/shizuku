@@ -1,12 +1,13 @@
 use crate::error::{DeserializeError, SerializeError};
 use crate::kv::{KeyValue, KeyValueRead, KeyValueWrite, KvReadError, KvWriteError};
-use crate::{ByteDeserialize, ByteSerialize, Processor};
+use crate::{ByteDeserialize, ByteSerialize};
 use async_nats::jetstream::kv::{CreateErrorKind, Store};
 use rand::Rng;
 use std::fmt::{Display, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
+use kanau::processor::Processor;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 /// The Kernel of [DistroRwLock]

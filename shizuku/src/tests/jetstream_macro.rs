@@ -2,7 +2,8 @@
 
 use std::sync::Arc;
 use crate::jetstream::FinalJetStreamProcessor;
-use crate::{jet_route, Error, Processor};
+use crate::{jet_route, Error};
+use crate::processor::Processor;
 use async_nats::Message;
 use tokio::sync::Mutex;
 

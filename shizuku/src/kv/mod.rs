@@ -1,6 +1,9 @@
 /// integrated distro rw lock
 pub mod rw_lock;
 
+/// atomic operation helper functions
+pub mod atomic_opt;
+
 use crate::kv::kv::Watch;
 use crate::kv::kv::WatchError;
 use crate::{ByteDeserialize, ByteSerialize};
@@ -8,8 +11,8 @@ use async_nats::jetstream::kv;
 use async_nats::jetstream::kv::{
     CreateError, Entry, EntryError, PutError, Store, UpdateError, UpdateErrorKind,
 };
-use std::fmt::{Debug, Display, Formatter};
-
+use std::fmt::Debug;
+use thiserror::Error;
 // ---------------------------------------------
 
 /// A value in KV store that has a static key.
@@ -150,31 +153,17 @@ impl<V: ByteDeserialize> TryFrom<Entry> for KvEntry<V> {
 
 // ---------------------------------------------
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 /// Error when reading from KV store.
 pub enum KvReadError<V: ByteDeserialize> {
+    #[error("Entry Error: {0}")]
     /// Error when reading from KV store.
-    EntryError(EntryError),
+    EntryError(#[from] EntryError),
+
+    #[error("Deserialize Error: {0}")]
     /// Error when deserializing the value.
     DeserializeError(V::DeError),
 }
-
-impl<V: ByteDeserialize> From<EntryError> for KvReadError<V> {
-    fn from(err: EntryError) -> Self {
-        Self::EntryError(err)
-    }
-}
-
-impl<V: ByteDeserialize> Display for KvReadError<V> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::EntryError(err) => write!(f, "Entry error: {}", err),
-            Self::DeserializeError(err) => write!(f, "Deserialize error: {}", err),
-        }
-    }
-}
-
-impl<V: ByteDeserialize + Debug> std::error::Error for KvReadError<V> {}
 
 /// A value that can be read from KV store.
 ///
@@ -257,46 +246,25 @@ where
 
 // ---------------------------------------------
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 /// Error when writing to KV store.
 pub enum KvWriteError<V: ByteSerialize> {
     /// Error when writing to KV store atomically.
-    UpdateError(UpdateError),
+    #[error("Update error: {0}")]
+    UpdateError(#[from] UpdateError),
 
     /// Error when writing to KV store.
-    PutError(PutError),
-
+    #[error("Put error: {0}")]
+    PutError(#[from] PutError),
+ 
     /// Error when serializing the value.
+    #[error("Serialize error: {0}")]
     SerializeError(V::SerError),
 
     /// Error when creating the value.
-    CreateError(CreateError),
+    #[error("Create error: {0}")]
+    CreateError(#[from] CreateError),
 }
-
-impl<V: ByteSerialize> From<UpdateError> for KvWriteError<V> {
-    fn from(err: UpdateError) -> Self {
-        Self::UpdateError(err)
-    }
-}
-
-impl<V: ByteSerialize> From<PutError> for KvWriteError<V> {
-    fn from(err: PutError) -> Self {
-        Self::PutError(err)
-    }
-}
-
-impl<V: ByteSerialize> Display for KvWriteError<V> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::UpdateError(err) => write!(f, "Update error: {}", err),
-            Self::PutError(err) => write!(f, "Put error: {}", err),
-            Self::SerializeError(err) => write!(f, "Serialize error: {}", err),
-            Self::CreateError(err) => write!(f, "Create error: {}", err),
-        }
-    }
-}
-
-impl<V: ByteSerialize + Debug> std::error::Error for KvWriteError<V> {}
 
 /// A value that can be written to KV store.
 pub trait KeyValueWrite: KeyValue

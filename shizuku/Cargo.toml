@@ -1,6 +1,6 @@
 [package]
 name = "shizuku"
-version = "0.0.2-alpha.2"
+version = "0.0.1"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/suitsu31-club/shizuku"
@@ -27,6 +27,8 @@ compact_str = {workspace = true}
 shizuku_macros = "0.0.1-alpha.1"
 time = "0.3.41"
 rand = "0.9"
+thiserror = "2.0"
+kanau = "0.1.0-alpha.1"
 
 [features]
 json = ["serde_json", "serde"]

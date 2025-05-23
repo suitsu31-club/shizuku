@@ -1,8 +1,8 @@
-use crate::core::{FinalProcessor, Processor};
 use crate::error::Error;
 use async_nats::jetstream::Message;
 use futures::StreamExt;
 use std::sync::Arc;
+use kanau::processor::{FinalProcessor, Processor};
 
 /// The outermost layer of a NATS JetStream consumer.
 ///
@@ -68,7 +68,7 @@ where
     /// 1. `processor`: The processor function, must implement [FinalJetStreamProcessor] trait.
     /// 2. `nats_connection`: The NATS connection, must be `&'static async_nats::Client`.
     /// 3. `error_tracer`: The error tracer, must implement [ErrorTracer] trait. If you
-    ///     don't want to trace the error, use [EmptyErrorTracer](crate::core::EmptyErrorTracer)
+    ///    don't want to trace the error, use [EmptyErrorTracer](crate::core::EmptyErrorTracer)
     pub fn new(
         processor: F,
         nats_connection: &'static async_nats::Client,
@@ -101,7 +101,8 @@ where
 /// 
 /// ```rust
 /// # use shizuku::jetstream::FinalJetStreamProcessor;
-/// # use shizuku::{jet_route, Error, Processor};
+/// # use shizuku::{jet_route, Error};
+/// # use shizuku::processor::Processor;
 /// # use async_nats::Message;
 /// 
 /// struct OrderPaidProcessor; // example

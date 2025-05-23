@@ -24,6 +24,9 @@ pub mod service_rpc;
 mod tests;
 mod fn_macro;
 
+pub use kanau::*;
+pub use kanau;
+
 pub use core::message::*;
 pub use core::error;
 pub use core::error::Error;
