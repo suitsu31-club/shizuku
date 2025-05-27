@@ -1251,7 +1251,7 @@ dependencies = [
  "rand 0.9.0",
  "serde",
  "serde_json",
- "shizuku_macros 0.0.2",
+ "shizuku_macros 0.0.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror 2.0.12",
  "time",
  "tokio",
@@ -1260,9 +1260,7 @@ dependencies = [
 
 [[package]]
 name = "shizuku_macros"
-version = "0.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ad2aceac7a355af442d214e4f91677b85cb11aee7d85b576623b79d1d8311b8"
+version = "0.0.3"
 dependencies = [
  "convert_case",
  "proc-macro2",
@@ -1274,6 +1272,8 @@ dependencies = [
 [[package]]
 name = "shizuku_macros"
 version = "0.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4deea7d792760ccb090f8a25c85e19014603e241e4de1ee8259f857b4b345be6"
 dependencies = [
  "convert_case",
  "proc-macro2",
