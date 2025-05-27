@@ -8,7 +8,7 @@ pub fn derive_bincode_byte_ser(input: TokenStream) -> TokenStream {
 
     quote! {
         impl shizuku::ByteSerialize for #name {
-            type SerError = bincode::Error;
+            type SerError = bincode::error::EncodeError;
 
             fn to_bytes(&self) -> Result<Box<[u8]>, Self::SerError> {
                 bincode::serialize(self).map(|v| v.into_boxed_slice())

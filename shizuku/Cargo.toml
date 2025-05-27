@@ -1,6 +1,6 @@
 [package]
 name = "shizuku"
-version = "0.0.2"
+version = "0.1.0"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/suitsu31-club/shizuku"
@@ -10,7 +10,7 @@ authors = ["Nikaidou Haruki <nharuki@pm.me>"]
 keywords = ["nats", "microservices"]
 
 [package.metadata.docs.rs]
-features = ["json", "protobuf"]
+features = ["json", "protobuf", "binc"]
 
 [dependencies]
 tokio = { workspace = true}
@@ -24,12 +24,14 @@ futures = { workspace = true }
 bytes = {workspace = true}
 async-nats = { workspace = true }
 compact_str = {workspace = true}
-shizuku_macros = "0.0.1-alpha.1"
+shizuku_macros = "0.0.2"
 time = "0.3.41"
 rand = "0.9"
 thiserror = "2.0"
 kanau = "0.1.0"
+bincode = {version = "2.0", optional = true}
 
 [features]
 json = ["serde_json", "serde"]
 protobuf = ["prost", "prost-types"]
+binc = ["bincode", "serde"]

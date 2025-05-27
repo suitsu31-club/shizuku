@@ -223,4 +223,18 @@ mod auto_implement {
             DeserializeError(err.into())
         }
     }
+    
+    #[cfg(feature = "binc")]
+    impl From<bincode::error::EncodeError> for SerializeError {
+        fn from(err: bincode::error::EncodeError) -> Self {
+            SerializeError(err.into())
+        }
+    }
+    
+    #[cfg(feature = "binc")]
+    impl From<bincode::error::DecodeError> for DeserializeError {
+        fn from(err: bincode::error::DecodeError) -> Self {
+            DeserializeError(err.into())
+        }
+    }
 }

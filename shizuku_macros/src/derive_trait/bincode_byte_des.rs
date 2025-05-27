@@ -8,7 +8,7 @@ pub fn derive_bincode_byte_des(input: TokenStream) -> TokenStream {
 
     quote! {
         impl shizuku::ByteDeserialize for #name {
-            type DeError = bincode::Error;
+            type DeError = bincode::error::DecodeError;
 
             fn parse_from_bytes(bytes: impl AsRef<[u8]>) -> Result<Self, Self::DeError> {
                 bincode::deserialize(bytes.as_ref())

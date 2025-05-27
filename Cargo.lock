@@ -34,9 +34,9 @@ checksum = "6b964d184e89d9b6b67dd2715bc8e74cf3107fb2b529990c90cf517326150bf4"
 
 [[package]]
 name = "async-nats"
-version = "0.40.0"
+version = "0.41.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e23419d455dc57d3ae60a2f4278cf561fc74fe866e548e14d2b0ad3e1b8ca0b2"
+checksum = "2cf0ae68ffe9ef362127a2223b42f57104edb20a50429f8c6e058912212884f7"
 dependencies = [
  "base64",
  "bytes",
@@ -100,6 +100,26 @@ name = "base64ct"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8c3c1a368f70d6cf7302d78f8f7093da241fb8e8807c05cc9e51a125895a6d5b"
+
+[[package]]
+name = "bincode"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "36eaf5d7b090263e8150820482d5d93cd964a81e4019913c972f4edcc6edb740"
+dependencies = [
+ "bincode_derive",
+ "serde",
+ "unty",
+]
+
+[[package]]
+name = "bincode_derive"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf95709a440f45e986983918d0e8a1f30a9b1df04918fc828670606804ac3c09"
+dependencies = [
+ "virtue",
+]
 
 [[package]]
 name = "bitflags"
@@ -1217,10 +1237,11 @@ dependencies = [
 
 [[package]]
 name = "shizuku"
-version = "0.0.2"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-nats",
+ "bincode",
  "bytes",
  "compact_str",
  "futures",
@@ -1230,7 +1251,7 @@ dependencies = [
  "rand 0.9.0",
  "serde",
  "serde_json",
- "shizuku_macros 0.0.1-alpha.1",
+ "shizuku_macros 0.0.2",
  "thiserror 2.0.12",
  "time",
  "tokio",
@@ -1239,9 +1260,9 @@ dependencies = [
 
 [[package]]
 name = "shizuku_macros"
-version = "0.0.1-alpha.1"
+version = "0.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77e228a9462f0293fd4e594eebd10876949007cef134d693fd5494a1a05d3e2d"
+checksum = "5ad2aceac7a355af442d214e4f91677b85cb11aee7d85b576623b79d1d8311b8"
 dependencies = [
  "convert_case",
  "proc-macro2",
@@ -1252,7 +1273,7 @@ dependencies = [
 
 [[package]]
 name = "shizuku_macros"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
  "convert_case",
  "proc-macro2",
@@ -1606,6 +1627,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 
 [[package]]
+name = "unty"
+version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d49784317cd0d1ee7ec5c716dd598ec5b4483ea832a2dced265471cc0f690ae"
+
+[[package]]
 name = "url"
 version = "2.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1633,6 +1660,12 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "virtue"
+version = "0.0.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "051eb1abcf10076295e815102942cc58f9d5e3b4560e46e53c21e8ff6f3af7b1"
 
 [[package]]
 name = "wasi"
