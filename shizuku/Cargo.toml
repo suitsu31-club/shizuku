@@ -9,16 +9,13 @@ description = "Modern microservices framework based on NATS."
 authors = ["Nikaidou Haruki <nharuki@pm.me>"]
 keywords = ["nats", "microservices"]
 
-[package.metadata.docs.rs]
-features = ["json", "protobuf", "binc"]
-
 [dependencies]
 tokio = { workspace = true}
 anyhow = { workspace = true }
-serde = { workspace = true, optional = true }
-serde_json = { workspace = true, optional = true }
-prost = {workspace = true, optional = true}
-prost-types = {workspace = true, optional = true}
+serde = { workspace = true }
+serde_json = { workspace = true }
+prost = {workspace = true}
+prost-types = {workspace = true}
 tracing = { workspace = true }
 futures = { workspace = true }
 bytes = {workspace = true}
@@ -29,9 +26,4 @@ time = "0.3.41"
 rand = "0.9"
 thiserror = "2.0"
 kanau = "0.1.0"
-bincode = {version = "2.0", features = ["serde"], optional = true}
-
-[features]
-json = ["serde_json", "serde"]
-protobuf = ["prost", "prost-types"]
-binc = ["bincode", "serde"]
+bincode = {version = "2.0", features = ["serde"]}

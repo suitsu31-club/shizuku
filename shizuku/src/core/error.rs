@@ -196,42 +196,36 @@ mod auto_implement {
         }
     }
 
-    #[cfg(feature = "json")]
     impl From<serde_json::Error> for SerializeError {
         fn from(err: serde_json::Error) -> Self {
             SerializeError(err.into())
         }
     }
     
-    #[cfg(feature = "json")]
     impl From<serde_json::Error> for DeserializeError {
         fn from(err: serde_json::Error) -> Self {
             DeserializeError(err.into())
         }
     }
     
-    #[cfg(feature = "protobuf")]
     impl From<prost::EncodeError> for SerializeError {
         fn from(err: prost::EncodeError) -> Self {
             SerializeError(err.into())
         }
     }
     
-    #[cfg(feature = "protobuf")]
     impl From<prost::DecodeError> for DeserializeError {
         fn from(err: prost::DecodeError) -> Self {
             DeserializeError(err.into())
         }
     }
     
-    #[cfg(feature = "binc")]
     impl From<bincode::error::EncodeError> for SerializeError {
         fn from(err: bincode::error::EncodeError) -> Self {
             SerializeError(err.into())
         }
     }
     
-    #[cfg(feature = "binc")]
     impl From<bincode::error::DecodeError> for DeserializeError {
         fn from(err: bincode::error::DecodeError) -> Self {
             DeserializeError(err.into())
