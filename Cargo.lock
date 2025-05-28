@@ -1260,7 +1260,7 @@ dependencies = [
 
 [[package]]
 name = "shizuku_macros"
-version = "0.0.6-alpha.1"
+version = "0.0.6-alpha.2"
 dependencies = [
  "convert_case",
  "proc-macro2",
