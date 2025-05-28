@@ -11,7 +11,7 @@ pub fn derive_bincode_byte_des(input: TokenStream) -> TokenStream {
             type DeError = bincode::error::DecodeError;
 
             fn parse_from_bytes(bytes: impl AsRef<[u8]>) -> Result<Self, Self::DeError> {
-                bincode::decode_from_slice(bytes.as_ref(), bincode::config::standard().with_little_endian().with_fixed_int_encoding())
+                bincode::decode_from_slice(bytes.as_ref(), bincode::config::standard().with_little_endian().with_fixed_int_encoding()).map_err(|e| e.0)
             }
         }
     }.into()
