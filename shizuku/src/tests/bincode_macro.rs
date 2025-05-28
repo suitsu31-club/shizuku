@@ -1,5 +1,4 @@
 use bincode::{Decode, Encode};
-use serde::{Deserialize, Serialize};
 use shizuku_macros::{BincodeByteDes, BincodeByteSer};
 use crate as shizuku;
 
