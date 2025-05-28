@@ -51,11 +51,11 @@ pub use shizuku_macros::ProtoDes;
 /// Implement [ByteSerialize] by `prost` if it already implements `prost::Message`.
 pub use shizuku_macros::ProtoSer;
 
-#[cfg(feature = "binc")]
+#[cfg(feature = "bincode")]
 /// Implement [ByteDeserialize] by `bincode` if it already implements `serde::Deserialize`.
 pub use shizuku_macros::BincodeByteDes;
 
-#[cfg(feature = "binc")]
+#[cfg(feature = "bincode")]
 /// Implement [ByteSerialize] by `bincode` if it already implements `serde::Serialize`.
 pub use shizuku_macros::BincodeByteSer;
 

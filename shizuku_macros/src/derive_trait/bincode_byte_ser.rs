@@ -11,7 +11,7 @@ pub fn derive_bincode_byte_ser(input: TokenStream) -> TokenStream {
             type SerError = bincode::error::EncodeError;
 
             fn to_bytes(&self) -> Result<Box<[u8]>, Self::SerError> {
-                bincode::encode_into_vec(self, bincode::config::standard().with_little_endian().with_fixed_int_encoding()).map(|v| v.into_boxed_slice())
+                bincode::encode_to_vec(self, bincode::config::standard().with_little_endian().with_fixed_int_encoding()).map(|v| v.into_boxed_slice())
             }
         }
     }.into()
