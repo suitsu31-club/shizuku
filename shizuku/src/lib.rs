@@ -52,11 +52,11 @@ pub use shizuku_macros::ProtoDes;
 pub use shizuku_macros::ProtoSer;
 
 #[cfg(feature = "bincode")]
-/// Implement [ByteDeserialize] by `bincode` if it already implements `serde::Deserialize`.
+/// Implement [ByteDeserialize] by `bincode` if it already implements `bincode::Decode`.
 pub use shizuku_macros::BincodeByteDes;
 
 #[cfg(feature = "bincode")]
-/// Implement [ByteSerialize] by `bincode` if it already implements `serde::Serialize`.
+/// Implement [ByteSerialize] by `bincode` if it already implements `bincode::Encode`.
 pub use shizuku_macros::BincodeByteSer;
 
 /// reexports of essentials
