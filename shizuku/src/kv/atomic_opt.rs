@@ -1,7 +1,9 @@
+use std::fmt::Debug;
 use async_nats::jetstream::kv::Store;
+use kanau::message::{MessageDe, MessageSer};
 use kanau::processor::Processor;
 use thiserror::Error;
-use crate::{kv, ByteDeserialize, ByteSerialize};
+use crate::{kv};
 use crate::kv::{KeyValueRead, KeyValueWrite, KvEntry, KvReadError, KvWriteError};
 
 #[derive(Debug)]
@@ -25,7 +27,7 @@ pub struct AtomicMap<
 > 
 where 
     <KV as kv::KeyValue>::Key: Clone,
-    <KV as kv::KeyValue>::Value: ByteDeserialize + ByteSerialize,
+    <KV as kv::KeyValue>::Value: MessageDe + MessageSer,
 {
     /// The key used to find the target key-value pair
     pub key: KV::Key,
@@ -39,7 +41,7 @@ where
 
 #[derive(Debug, Error)]
 /// Error in atomic operation
-pub enum AtomicOptError<T: ByteDeserialize + ByteSerialize> {
+pub enum AtomicOptError<T: MessageDe + MessageSer + Debug> {
     #[error("KvStore error when read: {0}")]
     /// KvStore error when read
     ReadError(KvReadError<T>),
@@ -62,10 +64,12 @@ pub type AtomicMapResult<V> = Result<(), AtomicOptError<V>>;
 
 impl<KV, P> Processor<AtomicMap<KV, P>, AtomicMapResult<KV::Value>> for AtomicOptProcessor<'_>
 where 
-    KV: KeyValueRead + KeyValueWrite,
+    KV: KeyValueRead + KeyValueWrite + Send,
     P: Processor<KvEntry<KV::Value>, KV::Value> + Send,
-    KV::Key: Clone,
-    KV::Value: ByteDeserialize + ByteSerialize,
+    KV::Key: Clone + Send,
+    KV::Value: MessageDe + MessageSer + Send + Sync + Debug,
+    <<KV as kv::KeyValue>::Value as MessageDe>::DeError: Send,
+    <<KV as kv::KeyValue>::Value as MessageSer>::SerError: Send,
 {
     async fn process(&self, input: AtomicMap<KV, P>) -> AtomicMapResult<KV::Value> {
         if let Some(retry_time) = input.retry_time {

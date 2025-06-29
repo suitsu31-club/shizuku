@@ -1,4 +1,4 @@
-use crate::error::{DeserializeError, PostProcessError, PreProcessError, SerializeError};
+use crate::error::{PostProcessError, PreProcessError};
 use async_nats::Subject;
 use async_nats::jetstream::Context;
 use async_nats::subject::ToSubject;
@@ -7,42 +7,16 @@ use std::fmt::Display;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::ops::Deref;
-// ---------------------------------------------
-
-/// This data can be serialized to bytes.
-pub trait ByteSerialize
-where
-    Self: Sized + Send + Sync,
-{
-    /// Error type for serialization.
-    type SerError: Into<SerializeError> + std::error::Error + Send + Sync + 'static;
-
-    /// serialize message to bytes. Can be any format.
-    fn to_bytes(&self) -> Result<Box<[u8]>, Self::SerError>;
-}
-
-/// This data can be deserialized from bytes.
-pub trait ByteDeserialize
-where
-    Self: Sized + Send + Sync,
-{
-    /// Error type for deserialization.
-    type DeError: Into<DeserializeError> + std::error::Error + Send + Sync + 'static;
-
-    /// parse message from bytes. Can be any format.
-    fn parse_from_bytes(bytes: impl AsRef<[u8]>) -> Result<Self, Self::DeError>;
-}
-
-// ---------------------------------------------
+use kanau::message::{MessageDe, MessageSer, SerializeError};
 
 /// Message in NATS JetStream that can be published.
-pub trait JetStreamMessageSendTrait: ByteSerialize + DynamicSubjectMessage {
+pub trait JetStreamMessageSendTrait: MessageSer + DynamicSubjectMessage + Send + Sync + Sized {
     #[doc(hidden)]
     /// Publish the message to the NATS server.
     ///
     /// **DO NOT OVERRIDE THIS FUNCTION.**
     fn publish(
-        &self,
+        self,
         js_context: &Context,
     ) -> impl Future<Output = Result<(), PostProcessError>> + Send {
         async {
@@ -60,12 +34,12 @@ pub trait JetStreamMessageSendTrait: ByteSerialize + DynamicSubjectMessage {
     }
 }
 
-impl<T: ByteSerialize + DynamicSubjectMessage> JetStreamMessageSendTrait for T {}
+impl<T: MessageSer + DynamicSubjectMessage + Send + Sync + Sized> JetStreamMessageSendTrait for T {}
 
 // ---------------------------------------------
 
 /// Message in NATS RPC services.
-pub trait NatsRpcCallTrait<Response: ByteDeserialize>: ByteSerialize {
+pub trait NatsRpcCallTrait<Response: MessageDe>: MessageSer + Send + Sync + Sized {
     /// The subject of the message. Must be static.
     ///
     /// A message can be used as multiple RPC calls' request. They can have multiple subjects.
@@ -78,7 +52,7 @@ pub trait NatsRpcCallTrait<Response: ByteDeserialize>: ByteSerialize {
     ///
     /// **DO NOT OVERRIDE THIS FUNCTION.**
     fn call(
-        &self,
+        self,
         nats_connection: &async_nats::Client,
     ) -> impl Future<Output = Result<Response, crate::Error>> + Send {
         async move {
@@ -91,7 +65,7 @@ pub trait NatsRpcCallTrait<Response: ByteDeserialize>: ByteSerialize {
                 .request(subject, bytes.to_vec().into())
                 .await
                 .map_err(crate::Error::RpcCallRequestError)?;
-            let data = Response::parse_from_bytes(response.payload)
+            let data = Response::from_bytes(response.payload.as_ref())
                 .map_err(|err| PreProcessError::DeserializeError(err.into()))
                 .map_err(crate::Error::PreProcessError)?;
             Ok(data)

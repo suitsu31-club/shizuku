@@ -1,24 +1,12 @@
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug)]
-/// Error when serializing message.
-pub struct SerializeError(pub anyhow::Error);
-
-impl Display for SerializeError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Failed to serialize message: \n{}", self.0)
-    }
-}
-
-impl std::error::Error for SerializeError {}
-
 // ---------------------------------------------
 
 #[derive(Debug)]
 /// Error after business login
 pub enum PostProcessError {
     /// Error when serializing message.
-    SerializeError(SerializeError),
+    SerializeError(kanau::message::SerializeError),
     /// Error when publishing message into NATS core.
     NatsMessagePushError(async_nats::PublishError),
     /// When trying to reply the request, find the `reply` is `None`.
@@ -50,24 +38,10 @@ impl PostProcessError {
 // ---------------------------------------------
 
 #[derive(Debug)]
-/// Error when deserializing message.
-pub struct DeserializeError(pub anyhow::Error);
-
-impl Display for DeserializeError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Failed to deserialize message: \n{}", self.0)
-    }
-}
-
-impl std::error::Error for DeserializeError {}
-
-// ---------------------------------------------
-
-#[derive(Debug)]
 /// Error before business logic.
 pub enum PreProcessError {
     /// Error when deserializing message.
-    DeserializeError(DeserializeError),
+    DeserializeError(kanau::message::DeserializeError),
 
     /// For a JetStream message, the reply subject is null.
     UnexpectedNullReplySubject,
@@ -158,10 +132,10 @@ impl Error {
 // ---------------------------------------------
 
 mod auto_implement {
-    use crate::error::{DeserializeError, PostProcessError, PreProcessError, SerializeError};
+    use crate::error::{PostProcessError, PreProcessError, };
 
-    impl From<SerializeError> for PostProcessError {
-        fn from(err: SerializeError) -> Self {
+    impl From<kanau::message::SerializeError> for PostProcessError {
+        fn from(err: kanau::message::SerializeError) -> Self {
             PostProcessError::SerializeError(err)
         }
     }
@@ -178,12 +152,6 @@ mod auto_implement {
         }
     }
 
-    impl From<DeserializeError> for PreProcessError {
-        fn from(err: DeserializeError) -> Self {
-            PreProcessError::DeserializeError(err)
-        }
-    }
-    
     impl From<PostProcessError> for super::Error {
         fn from(err: PostProcessError) -> Self {
             super::Error::PostProcessError(err)
@@ -195,40 +163,23 @@ mod auto_implement {
             super::Error::PreProcessError(err)
         }
     }
-
-    impl From<serde_json::Error> for SerializeError {
-        fn from(err: serde_json::Error) -> Self {
-            SerializeError(err.into())
+    
+    impl From<kanau::message::SerializeError> for super::Error {
+        fn from(err: kanau::message::SerializeError) -> Self {
+            super::Error::PostProcessError(PostProcessError::SerializeError(err))
         }
     }
     
-    impl From<serde_json::Error> for DeserializeError {
-        fn from(err: serde_json::Error) -> Self {
-            DeserializeError(err.into())
+    impl From<kanau::message::DeserializeError> for super::Error {
+        fn from(err: kanau::message::DeserializeError) -> Self {
+            super::Error::PreProcessError(PreProcessError::DeserializeError(err))
         }
     }
     
-    impl From<prost::EncodeError> for SerializeError {
-        fn from(err: prost::EncodeError) -> Self {
-            SerializeError(err.into())
+    impl From<kanau::message::DeserializeError> for PreProcessError {
+        fn from(err: kanau::message::DeserializeError) -> Self {
+            PreProcessError::DeserializeError(err)
         }
     }
     
-    impl From<prost::DecodeError> for DeserializeError {
-        fn from(err: prost::DecodeError) -> Self {
-            DeserializeError(err.into())
-        }
-    }
-    
-    impl From<bincode::error::EncodeError> for SerializeError {
-        fn from(err: bincode::error::EncodeError) -> Self {
-            SerializeError(err.into())
-        }
-    }
-    
-    impl From<bincode::error::DecodeError> for DeserializeError {
-        fn from(err: bincode::error::DecodeError) -> Self {
-            DeserializeError(err.into())
-        }
-    }
 }

@@ -9,7 +9,7 @@ pub mod election;
 
 use crate::kv::kv::Watch;
 use crate::kv::kv::WatchError;
-use crate::{ByteDeserialize, ByteSerialize};
+use kanau::message::{MessageDe, MessageSer};
 use async_nats::jetstream::kv;
 use async_nats::jetstream::kv::{
     CreateError, Entry, EntryError, PutError, Store, UpdateError, UpdateErrorKind,
@@ -111,7 +111,7 @@ pub trait KeyValue: Sized + Send + Sync {
 // ---------------------------------------------
 
 /// Result from atomic read or history read
-pub struct KvEntry<V: ByteDeserialize> {
+pub struct KvEntry<V: MessageDe> {
     /// Name of the bucket the entry is in.
     pub bucket: String,
 
@@ -137,14 +137,14 @@ pub struct KvEntry<V: ByteDeserialize> {
     pub seen_current: bool,
 }
 
-impl<V: ByteDeserialize> TryFrom<Entry> for KvEntry<V> {
+impl<V: MessageDe> TryFrom<Entry> for KvEntry<V> {
     type Error = V::DeError;
 
     fn try_from(value: Entry) -> Result<Self, Self::Error> {
         Ok(Self {
             bucket: value.bucket,
             key: value.key,
-            value: V::parse_from_bytes(value.value)?,
+            value: V::from_bytes(value.value.as_ref())?,
             revision: value.revision,
             delta: value.delta,
             created_at: value.created,
@@ -158,7 +158,7 @@ impl<V: ByteDeserialize> TryFrom<Entry> for KvEntry<V> {
 
 #[derive(Debug, Error)]
 /// Error when reading from KV store.
-pub enum KvReadError<V: ByteDeserialize> {
+pub enum KvReadError<V: MessageDe> {
     #[error("Entry Error: {0}")]
     /// Error when reading from KV store.
     EntryError(#[from] EntryError),
@@ -170,11 +170,11 @@ pub enum KvReadError<V: ByteDeserialize> {
 
 /// A value that can be read from KV store.
 ///
-/// If the `Value` type implements [ByteDeserialize], and
+/// If the `Value` type implements [MessageDe], and
 /// the `Key` type implements `Clone`, it can implement this trait automatically.
 pub trait KeyValueRead: KeyValue
 where
-    Self::Value: ByteDeserialize,
+    Self::Value: MessageDe,
     Self::Key: Clone,
 {
     /// Read the value from the store.
@@ -187,7 +187,7 @@ where
                 .get(key.clone())
                 .await?
                 .map(|value| {
-                    Self::Value::parse_from_bytes(value)
+                    Self::Value::from_bytes(value.as_ref())
                         .map_err(KvReadError::DeserializeError)
                         .map(|parsed| Self::new(key.clone(), parsed))
                 })
@@ -242,7 +242,7 @@ where
 
 impl<T: KeyValue> KeyValueRead for T
 where
-    T::Value: ByteDeserialize,
+    T::Value: MessageDe,
     T::Key: Clone,
 {
 }
@@ -251,7 +251,7 @@ where
 
 #[derive(Debug, Error)]
 /// Error when writing to KV store.
-pub enum KvWriteError<V: ByteSerialize> {
+pub enum KvWriteError<V: MessageSer> {
     /// Error when writing to KV store atomically.
     #[error("Update error: {0}")]
     UpdateError(#[from] UpdateError),
@@ -272,7 +272,7 @@ pub enum KvWriteError<V: ByteSerialize> {
 /// A value that can be written to KV store.
 pub trait KeyValueWrite: KeyValue
 where
-    Self::Value: ByteSerialize,
+    Self::Value: MessageSer,
     Self::Key: Into<String> + Send + Sync + Sized,
 {
     /// Write the value to the store.
@@ -339,7 +339,7 @@ where
 
 impl<T: KeyValue> KeyValueWrite for T
 where
-    T::Value: ByteSerialize,
+    T::Value: MessageSer,
     T::Key: Into<String> + Send + Sync + Sized,
 {
 }

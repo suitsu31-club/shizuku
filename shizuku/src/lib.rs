@@ -36,28 +36,28 @@ pub use tracing;
 pub use futures;
 
 #[cfg(feature = "json")]
-/// Implement [ByteDeserialize] by `serde_json` if it already implements `serde::Deserialize`.
-pub use shizuku_macros::JsonByteDes;
+/// Implement [MessageDe] by `serde_json` if it already implements `serde::Deserialize`.
+pub use kanau_macro::JsonMessageDe;
 
 #[cfg(feature = "json")]
-/// Implement [ByteSerialize] by `serde_json` if it already implements `serde::Serialize`.
-pub use shizuku_macros::JsonByteSer;
+/// Implement [MessageSer] by `serde_json` if it already implements `serde::Serialize`.
+pub use kanau_macro::JsonMessageSer;
 
 #[cfg(feature = "protobuf")]
-/// Implement [ByteDeserialize] by `prost` if it already implements `prost::Message`.
-pub use shizuku_macros::ProtoDes;
+/// Implement [MessageDe] by `prost` if it already implements `prost::Message`.
+pub use kanau_macro::ProstMessageDe;
 
 #[cfg(feature = "protobuf")]
-/// Implement [ByteSerialize] by `prost` if it already implements `prost::Message`.
-pub use shizuku_macros::ProtoSer;
+/// Implement [MessageSer] by `prost` if it already implements `prost::Message`.
+pub use kanau_macro::ProstMessageSer;
 
 #[cfg(feature = "bincode")]
-/// Implement [ByteDeserialize] by `bincode` if it already implements `bincode::Decode`.
-pub use shizuku_macros::BincodeByteDes;
+/// Implement [MessageDe] by `bincode` if it already implements `bincode::Decode`.
+pub use kanau_macro::BincodeMessageDe;
 
 #[cfg(feature = "bincode")]
-/// Implement [ByteSerialize] by `bincode` if it already implements `bincode::Encode`.
-pub use shizuku_macros::BincodeByteSer;
+/// Implement [MessageSer] by `bincode` if it already implements `bincode::Encode`.
+pub use kanau_macro::BincodeMessageSer;
 
 /// reexports of essentials
 pub mod prelude {
@@ -65,9 +65,8 @@ pub mod prelude {
     pub use kanau::processor::{Processor, FinalProcessor};
     pub use kanau::flow::EarlyReturn;
     pub use kanau::early_return;
+    pub use kanau::message::{MessageDe, MessageSer};
     pub use crate::core::message::{
-        ByteSerialize, 
-        ByteDeserialize,
         StaticSubjectMessage, 
         JetStreamMessageSendTrait
     };

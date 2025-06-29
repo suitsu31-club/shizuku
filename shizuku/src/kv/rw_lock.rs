@@ -1,15 +1,15 @@
-use crate::error::{DeserializeError, SerializeError};
 use crate::kv::{KeyValue, KeyValueRead, KeyValueWrite, KvReadError, KvWriteError};
-use crate::{ByteDeserialize, ByteSerialize};
 use async_nats::jetstream::kv::{CreateErrorKind, Store};
 use rand::Rng;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use kanau::message::{DeserializeError, SerializeError};
 use kanau::processor::Processor;
+use kanau_macro::{BincodeMessageDe, BincodeMessageSer};
 use thiserror::Error;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, BincodeMessageDe, BincodeMessageSer, bincode::Encode, bincode::Decode)]
 /// The Kernel of [DistroRwLock]
 pub struct DistroRwLockValue {
     /// The current mode of the lock.
@@ -112,7 +112,7 @@ impl DistroRwLockValue {
 }
 
 /// The current mode of the lock.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, BincodeMessageDe, BincodeMessageSer, bincode::Encode, bincode::Decode)]
 pub enum DistroRwLockMode {
     /// the lock is held by a reader
     Read,
@@ -175,66 +175,6 @@ impl From<DistroRwLockSerErr> for SerializeError {
     }
 }
 
-impl ByteSerialize for DistroRwLockValue {
-    type SerError = DistroRwLockSerErr;
-
-    fn to_bytes(&self) -> Result<Box<[u8]>, Self::SerError> {
-        let mut bytes: [u8; 17] = [0b00000000; 17];
-        match (&self.writer_waiting, &self.mode) {
-            (false, DistroRwLockMode::Idle) => bytes[0] = 0b000,
-            (false, DistroRwLockMode::Read) => bytes[0] = 0b001,
-            (false, DistroRwLockMode::Write) => bytes[0] = 0b010,
-            (true, DistroRwLockMode::Idle) => bytes[0] = 0b100,
-            (true, DistroRwLockMode::Read) => bytes[0] = 0b101,
-            (true, DistroRwLockMode::Write) => bytes[0] = 0b110,
-        }
-        bytes[1..9].copy_from_slice(&self.readers.to_be_bytes());
-        bytes[9..17].copy_from_slice(&self.acquired_at.to_be_bytes());
-        Ok(bytes.into())
-    }
-}
-
-impl ByteDeserialize for DistroRwLockValue {
-    type DeError = DistroRwLockDesErr;
-
-    fn parse_from_bytes(bytes: impl AsRef<[u8]>) -> Result<Self, Self::DeError> {
-        let bytes = bytes.as_ref();
-        if bytes.len() != 17 && bytes.len() != 9 {
-            return Err(DistroRwLockDesErr::InvalidByteLength);
-        }
-
-        let state = bytes[0];
-        let (writer_waiting, mode) = match state {
-            0b000 => (false, DistroRwLockMode::Idle),
-            0b001 => (false, DistroRwLockMode::Read),
-            0b010 => (false, DistroRwLockMode::Write),
-            0b100 => (true, DistroRwLockMode::Idle),
-            0b101 => (true, DistroRwLockMode::Read),
-            0b110 => (true, DistroRwLockMode::Write),
-            _ => return Err(DistroRwLockDesErr::BadByteValue),
-        };
-
-        let readers = u64::from_be_bytes(bytes[1..9].try_into().map_err(|_| {
-            DistroRwLockDesErr::InvalidByteLength
-        })?);
-
-        // Handle both old format (9 bytes) and new format (17 bytes)
-        let acquired_at = if bytes.len() == 17 {
-            u64::from_be_bytes(bytes[9..17].try_into().map_err(|_| {
-                DistroRwLockDesErr::InvalidByteLength
-            })?)
-        } else {
-            0 // Default value for old format
-        };
-
-        Ok(Self {
-            mode,
-            readers,
-            writer_waiting,
-            acquired_at,
-        })
-    }
-}
 
 #[derive(Debug, Clone)]
 /// A distributed read-write lock.

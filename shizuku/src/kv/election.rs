@@ -1,16 +1,16 @@
-use crate::error::{DeserializeError, SerializeError};
 use crate::kv::{KeyValue, KeyValueRead, KeyValueWrite, KvReadError, KvWriteError};
-use crate::{ByteDeserialize, ByteSerialize};
 use async_nats::jetstream::kv::Store;
 use rand::Rng;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use kanau::message::{DeserializeError, SerializeError};
 use kanau::processor::Processor;
+use kanau_macro::{BincodeMessageDe, BincodeMessageSer};
 use thiserror::Error;
 
 /// The state of a node in the election.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, BincodeMessageSer, BincodeMessageDe, bincode::Encode, bincode::Decode)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 pub enum ElectionNodeState {
     /// The node is a follower.
@@ -25,7 +25,7 @@ pub enum ElectionNodeState {
 }
 
 /// The election value stored in the key-value store.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, BincodeMessageSer, BincodeMessageDe, bincode::Encode, bincode::Decode)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 pub struct ElectionValue {
     /// The current leader ID, if any.
@@ -154,164 +154,6 @@ pub enum ElectionSerErr {}
 impl From<ElectionSerErr> for SerializeError {
     fn from(err: ElectionSerErr) -> Self {
         SerializeError(anyhow::Error::new(err))
-    }
-}
-
-impl ByteSerialize for ElectionValue {
-    type SerError = ElectionSerErr;
-
-    fn to_bytes(&self) -> Result<Box<[u8]>, Self::SerError> {
-        // Format:
-        // - 8 bytes: term (u64)
-        // - 8 bytes: last_heartbeat (u64)
-        // - 1 byte: has_leader (0 or 1)
-        // - If has_leader is 1:
-        //   - 2 bytes: leader_id length (u16)
-        //   - N bytes: leader_id (UTF-8 string)
-        // - 2 bytes: number of voters (u16)
-        // - For each voter:
-        //   - 2 bytes: voter_id length (u16)
-        //   - N bytes: voter_id (UTF-8 string)
-
-        let has_leader = self.leader_id.is_some() as u8;
-        let leader_id_bytes = if let Some(leader_id) = &self.leader_id {
-            leader_id.as_bytes()
-        } else {
-            &[]
-        };
-        let leader_id_len = leader_id_bytes.len() as u16;
-
-        let voters_count = self.voters.len() as u16;
-
-        // Calculate total size
-        let mut total_size = 8 + 8 + 1 + 2; // term + last_heartbeat + has_leader + voters_count
-        if has_leader == 1 {
-            total_size += 2 + leader_id_bytes.len(); // leader_id_len + leader_id
-        }
-
-        for voter in &self.voters {
-            total_size += 2 + voter.len(); // voter_len + voter
-        }
-
-        let mut result = Vec::with_capacity(total_size);
-
-        // Write term
-        result.extend_from_slice(&self.term.to_be_bytes());
-
-        // Write last_heartbeat
-        result.extend_from_slice(&self.last_heartbeat.to_be_bytes());
-
-        // Write has_leader
-        result.push(has_leader);
-
-        // Write leader_id if present
-        if has_leader == 1 {
-            result.extend_from_slice(&leader_id_len.to_be_bytes());
-            result.extend_from_slice(leader_id_bytes);
-        }
-
-        // Write voters count
-        result.extend_from_slice(&voters_count.to_be_bytes());
-
-        // Write voters
-        for voter in &self.voters {
-            let voter_bytes = voter.as_bytes();
-            let voter_len = voter_bytes.len() as u16;
-            result.extend_from_slice(&voter_len.to_be_bytes());
-            result.extend_from_slice(voter_bytes);
-        }
-
-        Ok(result.into_boxed_slice())
-    }
-}
-
-impl ByteDeserialize for ElectionValue {
-    type DeError = ElectionDesErr;
-
-    fn parse_from_bytes(bytes: impl AsRef<[u8]>) -> Result<Self, Self::DeError> {
-        let bytes = bytes.as_ref();
-
-        // Minimum size check: term(8) + last_heartbeat(8) + has_leader(1) + voters_count(2)
-        if bytes.len() < 19 {
-            return Err(ElectionDesErr::InvalidByteLength);
-        }
-
-        let mut pos = 0;
-
-        // Read term
-        let term = u64::from_be_bytes(bytes[pos..pos+8].try_into()
-            .map_err(|_| ElectionDesErr::InvalidByteLength)?);
-        pos += 8;
-
-        // Read last_heartbeat
-        let last_heartbeat = u64::from_be_bytes(bytes[pos..pos+8].try_into()
-            .map_err(|_| ElectionDesErr::InvalidByteLength)?);
-        pos += 8;
-
-        // Read has_leader
-        let has_leader = bytes[pos];
-        pos += 1;
-
-        // Read leader_id if present
-        let leader_id = if has_leader == 1 {
-            if bytes.len() < pos + 2 {
-                return Err(ElectionDesErr::InvalidByteLength);
-            }
-
-            let leader_id_len = u16::from_be_bytes(bytes[pos..pos+2].try_into()
-                .map_err(|_| ElectionDesErr::InvalidByteLength)?);
-            pos += 2;
-
-            if bytes.len() < pos + leader_id_len as usize {
-                return Err(ElectionDesErr::InvalidByteLength);
-            }
-
-            let leader_id_str = std::str::from_utf8(&bytes[pos..pos+leader_id_len as usize])
-                .map_err(|_| ElectionDesErr::InvalidFormat)?;
-            pos += leader_id_len as usize;
-
-            Some(leader_id_str.to_string())
-        } else {
-            None
-        };
-
-        // Read voters count
-        if bytes.len() < pos + 2 {
-            return Err(ElectionDesErr::InvalidByteLength);
-        }
-
-        let voters_count = u16::from_be_bytes(bytes[pos..pos+2].try_into()
-            .map_err(|_| ElectionDesErr::InvalidByteLength)?);
-        pos += 2;
-
-        // Read voters
-        let mut voters = Vec::with_capacity(voters_count as usize);
-        for _ in 0..voters_count {
-            if bytes.len() < pos + 2 {
-                return Err(ElectionDesErr::InvalidByteLength);
-            }
-
-            let voter_len = u16::from_be_bytes(bytes[pos..pos+2].try_into()
-                .map_err(|_| ElectionDesErr::InvalidByteLength)?);
-            pos += 2;
-
-            if bytes.len() < pos + voter_len as usize {
-                return Err(ElectionDesErr::InvalidByteLength);
-            }
-
-            let voter_str = std::str::from_utf8(&bytes[pos..pos+voter_len as usize])
-                .map_err(|_| ElectionDesErr::InvalidFormat)?;
-            pos += voter_len as usize;
-
-            voters.push(voter_str.to_string());
-        }
-
-        Ok(Self {
-            leader_id,
-            term,
-            last_heartbeat,
-            voters,
-        })
     }
 }
 
